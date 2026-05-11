@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.4 — 2026-05-12
+
+- Add: first-install welcome walkthrough that teaches the activity-bar location plus the focus / spawn / enter / cycle / kill shortcuts. Re-openable any time via **Glance: Show Welcome Tour** in the Command Palette.
+- Polish: opaque, full-bleed extension icon so the Marketplace listing doesn't show transparent corners.
+- Docs: drop the Marketplace badge from the README (redundant with the listing page itself) and add an author byline.
+
 ## 0.0.3 — 2026-05-12
 
 - Docs: trim README to the user-facing surface (remove contributor-only build/test instructions).

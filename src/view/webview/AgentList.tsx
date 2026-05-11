@@ -28,10 +28,21 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
     : agents;
 
   useEffect(() => {
-    const onFocus = () => containerRef.current?.focus();
+    const onFocus = () => {
+      containerRef.current?.focus();
+      // If nothing's selected yet (or the previously-active agent was
+      // removed), anchor on the first visible card. Without this the user
+      // has to press Down once before any card highlights — a wasted
+      // keystroke when they just pressed Cmd+Shift+G to start navigating.
+      const stillActive =
+        activeId !== null && filtered.some((a) => a.id === activeId);
+      if (!stillActive && filtered.length > 0) {
+        onSelect(filtered[0].id);
+      }
+    };
     window.addEventListener('glancer:focus', onFocus);
     return () => window.removeEventListener('glancer:focus', onFocus);
-  }, []);
+  }, [activeId, filtered, onSelect]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
@@ -45,8 +56,17 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
       const next = i < 0 ? (step > 0 ? 0 : len - 1) : (i + step + len) % len;
       onSelect(ids[next]);
     } else if (e.key === 'Enter') {
+      // Enter on a focused card hands keyboard focus to the agent's
+      // terminal. The host's `focusTerminal` path uses `show(false)` —
+      // focus-stealing, unlike `select` which preserves panel focus.
+      if (!activeId) return;
       e.preventDefault();
-      containerRef.current?.blur();
+      postToHost({ type: 'focusTerminal', id: activeId });
+    } else if (e.key === 'g' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      // Plain `g` spawns a new agent (the second half of the Cmd+Shift+G,G
+      // chord — first press focuses the panel, second `g` opens a session).
+      e.preventDefault();
+      postToHost({ type: 'newAgent' });
     } else if (e.key === 'Escape') {
       e.preventDefault();
       containerRef.current?.blur();
@@ -57,6 +77,18 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
     }
   };
 
+  // After any mouse interaction inside the panel, snap focus back to the
+  // navigation container so subsequent Up/Down/Enter/G keys flow through
+  // onKeyDown (which guards on target === currentTarget). Without this,
+  // clicking a card leaves focus on the card and breaks chained keyboard
+  // nav. We use onMouseUp because onClick fires after focus has already
+  // moved; refocusing in mouseup gets us back in time for the next keydown.
+  const refocusContainer = () => {
+    // Don't yank focus out of the rename input.
+    if (document.activeElement?.tagName === 'INPUT') return;
+    containerRef.current?.focus();
+  };
+
   return (
     <div
       className="panel agent-panel"
@@ -64,6 +96,7 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
       tabIndex={-1}
       data-agent-list-nav
       onKeyDown={onKeyDown}
+      onMouseUp={refocusContainer}
     >
       <div className="panel-header">
         <div className="panel-header-left">

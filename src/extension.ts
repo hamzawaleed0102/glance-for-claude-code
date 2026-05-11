@@ -5,6 +5,17 @@ import { AgentPanelProvider } from './view/AgentPanelProvider';
 let manager: AgentManager | null = null;
 
 export function activate(context: vscode.ExtensionContext): void {
+  console.log('[glancer] activate() begin');
+  try {
+    // Sanity-check node-pty can load in this Electron runtime.
+    const pty = require('node-pty') as { spawn: unknown };
+    console.log('[glancer] node-pty loaded, spawn type=', typeof pty.spawn);
+  } catch (err) {
+    console.error('[glancer] node-pty failed to load', err);
+    vscode.window.showErrorMessage(
+      `Glancer: failed to load node-pty — ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   manager = new AgentManager({ context });
   const provider = new AgentPanelProvider(context, manager);
 

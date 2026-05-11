@@ -1,11 +1,8 @@
 import * as vscode from 'vscode';
+import * as fs from 'node:fs';
 import { createClaudePty, type ClaudePty } from './pseudoterminal';
-import { extractMarkers, type MarkerSet } from '../markers/extractMarkers';
-import { SUMMARY_SYSTEM_PROMPT } from '../markers/systemPrompt';
-import { watchTranscript, type TranscriptWatcher } from '../markers/transcriptWatcher';
+import { watchState, type StateWatcher, type AgentState } from '../markers/stateWatcher';
 import type { AgentSnapshot, ClaudeModel, TitleSource } from '../shared/messages';
-
-const STREAM_IDLE_MS = 600;
 
 function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
@@ -21,8 +18,42 @@ export interface AgentInit {
   cwd: string;
   model: ClaudeModel;
   hookSettingsPath: string;
+  /**
+   * JSON file registering the Glancer MCP server. The server returns its
+   * Glancer system instructions in the MCP `initialize` response, so the
+   * prompt never appears on the claude CLI — no shell echo to worry about.
+   */
+  mcpConfigPath: string;
   eventsDir: string;
   hookScriptPath: string;
+  /**
+   * Absolute path of the per-agent JSON status file Claude maintains via the
+   * `glancer_update_state` MCP tool. The extension watches this file to
+   * drive the agent card — see `stateWatcher.ts` and `summarySystemPrompt`
+   * for the contract.
+   */
+  stateFilePath: string;
+  /**
+   * When true, the Agent is restored from disk but no PTY is spawned. The
+   * card shows last-known state; the first `reveal()` / `select` revives the
+   * Agent and starts Claude with `--resume sessionId`. Used by the
+   * AgentManager on extension reload so we don't spin up every Claude
+   * session immediately.
+   */
+  dormant?: boolean;
+  /** Existing Claude session id to resume (passed via `claude --resume`). */
+  sessionId?: string | null;
+  /** Snapshot fields to seed the dormant Agent with — usually the persisted name/titleSource. */
+  initialSnapshot?: {
+    name?: string;
+    titleSource?: TitleSource;
+  };
+  /**
+   * Whether the user has already chatted in this session. If true, the
+   * Agent skips waiting for the next UserPromptSubmit before becoming
+   * eligible for persistence. Set from sessions.json on restore.
+   */
+  hasUserPrompt?: boolean;
 }
 
 export class Agent implements vscode.Disposable {
@@ -35,28 +66,115 @@ export class Agent implements vscode.Disposable {
   private _errorReason: string | null = null;
   private _progress: { value: number; label: string } | null = null;
   private _streaming = false;
-  private _streamTimer: NodeJS.Timeout | null = null;
+  private _starting = true;
 
-  private claude: ClaudePty;
-  private terminal: vscode.Terminal;
-  private watcher: TranscriptWatcher | null = null;
+  private claude: ClaudePty | null = null;
+  private terminal: vscode.Terminal | null = null;
+  private stateWatcher: StateWatcher;
+  private readonly stateFilePath: string;
+  private readonly init: AgentInit;
+  private _sessionId: string | null = null;
+  private _dormant: boolean;
+  /**
+   * True once the user has submitted at least one prompt. Until this flips,
+   * Claude hasn't written the session JSONL on disk and `--resume <id>`
+   * would fail with "No conversation found". The manager uses this flag to
+   * decide whether to persist the agent across launches.
+   */
+  private _hasUserPrompt: boolean;
 
   private readonly changeEmitter = new vscode.EventEmitter<Partial<AgentSnapshot>>();
   readonly onChange = this.changeEmitter.event;
 
+  /** Fires when persistable metadata changes (sessionId, name, titleSource). */
+  private readonly metaChangeEmitter = new vscode.EventEmitter<void>();
+  readonly onMetaChange = this.metaChangeEmitter.event;
+
   private readonly exitEmitter = new vscode.EventEmitter<void>();
   readonly onExit = this.exitEmitter.event;
 
-  constructor(init: AgentInit) {
-    this.id = init.id;
-    this._name = `shell-${init.id.slice(3)}`;
-    this._model = init.model;
+  /**
+   * Fires when Claude's Stop hook reports the end of a response. The Stop
+   * hook is the cleanest "turn complete, ball is in user's court" signal —
+   * far more reliable than guessing from PTY idle timers, which fire on
+   * mid-turn pauses (slow tool calls, etc).
+   */
+  private readonly turnCompleteEmitter = new vscode.EventEmitter<void>();
+  readonly onTurnComplete = this.turnCompleteEmitter.event;
 
+  /**
+   * Per-agent unread flag. True from the moment a turn completes (and the
+   * provider decides the user wasn't watching) until the user interacts
+   * with this agent in some way — selecting, focusing its terminal, or
+   * submitting another prompt. The manager aggregates these into the
+   * activity-bar badge count.
+   *
+   * Intentionally NOT persisted: a fresh extension activation starts with
+   * zero unread, matching how most apps reset notification state on launch.
+   */
+  private _hasUnread = false;
+  private readonly unreadChangeEmitter = new vscode.EventEmitter<void>();
+  readonly onUnreadChange = this.unreadChangeEmitter.event;
+  get hasUnread(): boolean {
+    return this._hasUnread;
+  }
+  markUnread(): void {
+    if (this._hasUnread) return;
+    this._hasUnread = true;
+    this.unreadChangeEmitter.fire();
+  }
+  markRead(): void {
+    if (!this._hasUnread) return;
+    this._hasUnread = false;
+    this.unreadChangeEmitter.fire();
+  }
+
+  constructor(init: AgentInit) {
+    this.init = init;
+    this.id = init.id;
+    this._name = init.initialSnapshot?.name ?? `glancer-${init.id.slice(3)}`;
+    this._titleSource = init.initialSnapshot?.titleSource ?? 'default';
+    this._model = init.model;
+    this.stateFilePath = init.stateFilePath;
+    this._sessionId = init.sessionId ?? null;
+    this._dormant = init.dormant === true;
+    this._hasUserPrompt = init.hasUserPrompt === true;
+
+    // Dormant agents aren't "starting" — they're showing their last-known
+    // state. The starting placeholder is for live launches only.
+    if (this._dormant) this._starting = false;
+
+    if (!this._dormant) this.spawn();
+
+    // Always watch the state file. For dormant agents it reads back the
+    // persisted markers from the last session. For live agents it picks up
+    // updates from Claude's MCP tool calls.
+    this.stateWatcher = watchState(this.stateFilePath, (state) =>
+      this.applyState(state),
+    );
+  }
+
+  /**
+   * Build the launch command and spawn the Claude PTY. Called once at
+   * construction for live agents and on `revive()` for dormant ones.
+   */
+  private spawn(): void {
+    const init = this.init;
     const modelFlag = init.model === 'default' ? '' : ` --model ${init.model}`;
+    // `--resume <id>` reconnects to the prior conversation. Only emitted
+    // when we have a sessionId from a previous run; fresh agents start a
+    // new Claude session and the SessionStart hook captures its id.
+    const resumeFlag = this._sessionId
+      ? ` --resume ${shellQuote(this._sessionId)}`
+      : '';
+    // No `--append-system-prompt` — the Glancer MCP server returns the
+    // system instructions through its `initialize` response's
+    // `instructions` field, the official MCP mechanism for it.
     const initialCommand =
       `clear && claude --dangerously-skip-permissions${modelFlag}` +
       ` --settings ${shellQuote(init.hookSettingsPath)}` +
-      ` --append-system-prompt ${shellQuote(SUMMARY_SYSTEM_PROMPT)}`;
+      ` --mcp-config ${shellQuote(init.mcpConfigPath)}` +
+      resumeFlag;
 
     this.claude = createClaudePty({
       cwd: init.cwd,
@@ -66,30 +184,180 @@ export class Agent implements vscode.Disposable {
         GLANCER_AGENT_ID: init.id,
         GLANCER_EVENTS_DIR: init.eventsDir,
         GLANCER_HOOK_SCRIPT: init.hookScriptPath,
+        GLANCER_STATE_FILE: this.stateFilePath,
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
       },
       initialCommand,
     });
 
+    // Seed the terminal tab title with the current agent name so a restored
+    // session with an AI/manual title shows that title in the VS Code
+    // terminal panel from the moment it spawns — not just the default
+    // `glancer-XX`. Subsequent renames are pushed via `claude.setName`.
+    //
+    // Green tint on the tab indicator + eye icon visually distinguishes
+    // Glancer-owned terminals from regular user shells in the same panel,
+    // so it's obvious which sessions are managed by our extension.
     this.terminal = vscode.window.createTerminal({
       name: this._name,
       pty: this.claude.pty,
+      color: new vscode.ThemeColor('terminal.ansiGreen'),
+      iconPath: new vscode.ThemeIcon('eye'),
     });
 
-    this.claude.onData(() => this.markStreaming());
-    this.claude.onExit(() => this.exitEmitter.fire());
+    // NOTE: deliberately no `onData → markStreaming` wiring. Terminal echoes
+    // (e.g. characters typed into Claude's input box) also flow through
+    // onData, so a PTY-driven `streaming` flag spuriously turns the bubble
+    // on while the user is just typing. The canonical signals come from
+    // Claude's hooks: UserPromptSubmit flips streaming on (in
+    // clearTransient), Stop flips it off (in notifyTurnComplete).
+    this.claude.onExit(() => {
+      this.exitEmitter.fire();
+      // PTY exit is NOT the same as "user wants this agent deleted". It
+      // happens on every Cmd+R reload (VS Code tears down terminals before
+      // the extension can react) and on any accidental terminal close. We
+      // transition to dormant so the card stays in sessions.json — the
+      // user can revive it by clicking, or delete it deliberately via the
+      // Glancer kill button.
+      this.becomeDormant();
+    });
+    this.claude.onStartupComplete(() => {
+      if (!this._starting) return;
+      this._starting = false;
+      this.changeEmitter.fire({ starting: false });
+    });
   }
 
-  bindSession(sessionId: string): void {
-    if (this.watcher) return;
-    this.watcher = watchTranscript(sessionId, (text) => {
-      this.applyMarkers(extractMarkers(text));
-    });
+  /**
+   * Drop the live PTY/terminal references and mark the Agent dormant.
+   * Triggered when the underlying Claude process exits for any reason
+   * (terminal closed, VS Code reload, claude binary crash). The card stays
+   * visible with last-known markers; reveal()/revive() can later spawn a
+   * fresh PTY with `--resume <sessionId>`.
+   */
+  private becomeDormant(): void {
+    if (this._dormant) return;
+    this._dormant = true;
+    this.claude = null;
+    try {
+      this.terminal?.dispose();
+    } catch {
+      // already disposed by VS Code on shutdown
+    }
+    this.terminal = null;
+    if (this._streaming) {
+      this._streaming = false;
+      this.changeEmitter.fire({ streaming: false });
+    }
+  }
+
+  /**
+   * Revive a dormant agent — spawn the Claude PTY (with --resume if we have
+   * a sessionId from the previous run). Subsequent reveals just show the
+   * existing terminal.
+   */
+  revive(): void {
+    if (!this._dormant) return;
+    this._dormant = false;
+    this._starting = true;
+    this.changeEmitter.fire({ starting: true });
+    this.spawn();
+  }
+
+  /**
+   * Cwd / model / sessionId getters for the manager when persisting.
+   * They're plain reads, not part of the snapshot diff machinery.
+   */
+  get cwd(): string { return this.init.cwd; }
+  get model(): ClaudeModel { return this._model; }
+  get sessionId(): string | null { return this._sessionId; }
+  get titleSource(): TitleSource { return this._titleSource; }
+  get name(): string { return this._name; }
+  get hasUserPrompt(): boolean { return this._hasUserPrompt; }
+
+  /**
+   * Called when SessionStart hook fires with a new session id. Triggers
+   * onMetaChange so the manager re-persists sessions.json.
+   */
+  setSessionId(id: string): void {
+    if (this._sessionId === id) return;
+    this._sessionId = id;
+    this.metaChangeEmitter.fire();
+  }
+
+  /**
+   * Called when UserPromptSubmit fires. Until this flips, Claude has not
+   * written a session JSONL — `--resume` on a session with no user message
+   * fails with "No conversation found". The manager filters un-prompted
+   * agents out of sessions.json so they don't get restored on next launch.
+   */
+  markUserPrompted(): void {
+    if (this._hasUserPrompt) return;
+    this._hasUserPrompt = true;
+    this.metaChangeEmitter.fire();
+  }
+
+  /** Called by AgentManager when Claude's Stop hook fires for this agent. */
+  notifyTurnComplete(): void {
+    // Explicit "turn ended" — flip streaming off so the bubble goes away
+    // and the green ✓ takes over (based on tldr/progress). Without this,
+    // streaming would stay true forever, since no PTY-data heuristic
+    // resets it now.
+    if (this._streaming) {
+      this._streaming = false;
+      this.changeEmitter.fire({ streaming: false });
+    }
+    this.turnCompleteEmitter.fire();
+  }
+
+  /**
+   * Set the attention marker directly. Used by AgentManager when the
+   * `Notification` hook fires — that hook represents "Claude (or one of
+   * its slash commands) needs the user's input", which won't always flow
+   * through the MCP update_state path (e.g. interactive pickers in slash
+   * commands like /feedback never call MCP). Also flips streaming off and
+   * re-uses the turnComplete event so the toast logic stays in one place.
+   */
+  setNeedsAttention(reason: string): void {
+    const next = reason.trim() || 'Waiting for input';
+    let changed = false;
+    const patch: Partial<AgentSnapshot> = {};
+    if (this._attentionReason !== next) {
+      this._attentionReason = next;
+      patch.attentionReason = next;
+      changed = true;
+    }
+    if (this._streaming) {
+      this._streaming = false;
+      patch.streaming = false;
+      changed = true;
+    }
+    if (changed) this.changeEmitter.fire(patch);
+    this.turnCompleteEmitter.fire();
+  }
+
+  /** True when this agent's terminal is the active VS Code terminal. */
+  isTerminalActive(): boolean {
+    return !!this.terminal && vscode.window.activeTerminal === this.terminal;
   }
 
   clearTransient(): void {
+    // Called on every UserPromptSubmit. Wipes every per-turn marker — TL;DR,
+    // needs-input, error, progress — so the card resets to a clean state
+    // while we wait for the next response. Title is intentionally preserved:
+    // it's a session-level marker that Claude only emits on the first turn.
+    //
+    // Sets `streaming = true` to show the blinking bubble. The Stop hook
+    // (via notifyTurnComplete) is responsible for flipping it back off —
+    // there's no idle-timer fallback, so an agent that crashes mid-turn
+    // would stay pulsing. That's an acceptable trade for not having the
+    // bubble flicker every time the user types a character.
     const patch: Partial<AgentSnapshot> = {};
+    if (this._tldr !== null) {
+      this._tldr = null;
+      patch.tldr = null;
+    }
     if (this._attentionReason !== null) {
       this._attentionReason = null;
       patch.attentionReason = null;
@@ -102,23 +370,47 @@ export class Agent implements vscode.Disposable {
       this._progress = null;
       patch.progress = null;
     }
+    if (!this._streaming) {
+      this._streaming = true;
+      patch.streaming = true;
+    }
     if (Object.keys(patch).length > 0) this.changeEmitter.fire(patch);
   }
 
   setManualTitle(name: string): void {
     const trimmed = name.trim();
     if (trimmed.length === 0) {
-      this._titleSource = 'ai';
-      this._name = `shell-${this.id.slice(3)}`;
+      // Empty input means "drop my override, go back to the auto-assigned
+      // glancer-id title". Flip titleSource to 'default' so the AI marker
+      // can overwrite it from the next response.
+      this._titleSource = 'default';
+      this._name = `glancer-${this.id.slice(3)}`;
     } else {
       this._titleSource = 'manual';
       this._name = trimmed;
     }
+    this.claude?.setName(this._name);
     this.changeEmitter.fire({ name: this._name, titleSource: this._titleSource });
+    this.metaChangeEmitter.fire();
   }
 
   reveal(): void {
-    this.terminal.show(true);
+    // First reveal of a dormant agent revives it — spawns the Claude PTY
+    // with `--resume <sessionId>` and shows the new terminal. Subsequent
+    // reveals just bring the terminal to the foreground.
+    if (this._dormant) this.revive();
+    this.terminal?.show(true);
+  }
+
+  /**
+   * Like reveal(), but pulls focus *into* the terminal. Used when the user
+   * presses Enter on a focused card — reveal() alone keeps focus on the
+   * Glancer panel (preserveFocus=true) so Up/Down navigation keeps working;
+   * this variant deliberately steals focus.
+   */
+  focusTerminal(): void {
+    if (this._dormant) this.revive();
+    this.terminal?.show(false);
   }
 
   snapshot(): AgentSnapshot {
@@ -132,70 +424,118 @@ export class Agent implements vscode.Disposable {
       errorReason: this._errorReason,
       progress: this._progress,
       streaming: this._streaming,
+      starting: this._starting,
     };
   }
 
+  /**
+   * Tear down runtime state (PTY, terminal, watchers, emitters) but LEAVE
+   * the on-disk state file in place. Called on extension shutdown so the
+   * next launch can restore the agent's last-known markers from the file.
+   */
   dispose(): void {
-    this.watcher?.dispose();
-    this.watcher = null;
-    this.claude.dispose();
-    this.terminal.dispose();
-    if (this._streamTimer) clearTimeout(this._streamTimer);
+    this.stateWatcher.dispose();
+    this.claude?.dispose();
+    this.terminal?.dispose();
     this.changeEmitter.dispose();
     this.exitEmitter.dispose();
+    this.metaChangeEmitter.dispose();
+    this.turnCompleteEmitter.dispose();
+    this.unreadChangeEmitter.dispose();
   }
 
-  private applyMarkers(m: MarkerSet): void {
+  /**
+   * Delete the on-disk state file. Called by AgentManager only when the
+   * user explicitly kills the agent (not on extension shutdown).
+   */
+  purgePersistentState(): void {
+    try {
+      fs.unlinkSync(this.stateFilePath);
+    } catch {
+      // file may not exist — Claude never wrote it
+    }
+  }
+
+  /**
+   * Applies a parsed state JSON from Claude's status file. Field semantics:
+   *   - missing → leave current value alone
+   *   - explicit null → clear
+   *   - value → set
+   */
+  private applyState(s: AgentState): void {
     const patch: Partial<AgentSnapshot> = {};
 
-    if (m.tldr !== undefined && m.tldr !== this._tldr) {
-      this._tldr = m.tldr;
-      patch.tldr = m.tldr;
+    if ('tldr' in s && s.tldr !== undefined) {
+      const next = typeof s.tldr === 'string' ? s.tldr.trim() || null : null;
+      if (next !== this._tldr) {
+        this._tldr = next;
+        patch.tldr = next;
+      }
     }
     if (
-      m.title !== undefined &&
+      'title' in s &&
+      typeof s.title === 'string' &&
+      s.title.trim().length > 0 &&
       this._titleSource !== 'manual' &&
-      this._titleSource !== 'rename' &&
-      m.title !== this._name
+      this._titleSource !== 'rename'
     ) {
-      this._name = m.title;
-      this._titleSource = 'ai';
-      patch.name = m.title;
-      patch.titleSource = 'ai';
+      const next = s.title.trim();
+      if (next !== this._name) {
+        this._name = next;
+        this._titleSource = 'ai';
+        patch.name = next;
+        patch.titleSource = 'ai';
+        this.claude?.setName(next);
+      }
     }
-    if (m.needsInput !== undefined && m.needsInput !== this._attentionReason) {
-      this._attentionReason = m.needsInput;
-      patch.attentionReason = m.needsInput;
+    if ('needsInput' in s && s.needsInput !== undefined) {
+      const next =
+        typeof s.needsInput === 'string' ? s.needsInput.trim() || null : null;
+      if (next !== this._attentionReason) {
+        this._attentionReason = next;
+        patch.attentionReason = next;
+      }
     }
-    if (m.error !== undefined && m.error !== this._errorReason) {
-      this._errorReason = m.error;
-      patch.errorReason = m.error;
+    if ('error' in s && s.error !== undefined) {
+      const next = typeof s.error === 'string' ? s.error.trim() || null : null;
+      if (next !== this._errorReason) {
+        this._errorReason = next;
+        patch.errorReason = next;
+      }
     }
-    if (m.progress !== undefined) {
+    if ('progress' in s && s.progress !== undefined) {
+      const p = s.progress;
+      const next =
+        p &&
+        typeof p === 'object' &&
+        typeof p.value === 'number' &&
+        Number.isFinite(p.value) &&
+        typeof p.label === 'string' &&
+        p.label.trim().length > 0
+          ? { value: Math.max(0, Math.min(1, p.value)), label: p.label.trim() }
+          : null;
       const same =
-        this._progress &&
-        m.progress &&
-        this._progress.value === m.progress.value &&
-        this._progress.label === m.progress.label;
+        (next === null && this._progress === null) ||
+        (next !== null &&
+          this._progress !== null &&
+          next.value === this._progress.value &&
+          next.label === this._progress.label);
       if (!same) {
-        this._progress = m.progress;
-        patch.progress = m.progress;
+        this._progress = next;
+        patch.progress = next;
       }
     }
 
-    if (Object.keys(patch).length > 0) this.changeEmitter.fire(patch);
+    if (Object.keys(patch).length > 0) {
+      console.log(`[glancer] ${this.id} applyState patch=`, patch);
+      this.changeEmitter.fire(patch);
+      // Name/titleSource end up in sessions.json — re-persist when either
+      // moves so a restart picks up the AI-set title without losing the
+      // user's manual override.
+      if (patch.name !== undefined || patch.titleSource !== undefined) {
+        this.metaChangeEmitter.fire();
+      }
+    }
   }
 
-  private markStreaming(): void {
-    if (!this._streaming) {
-      this._streaming = true;
-      this.changeEmitter.fire({ streaming: true });
-    }
-    if (this._streamTimer) clearTimeout(this._streamTimer);
-    this._streamTimer = setTimeout(() => {
-      this._streamTimer = null;
-      this._streaming = false;
-      this.changeEmitter.fire({ streaming: false });
-    }, STREAM_IDLE_MS);
-  }
 }

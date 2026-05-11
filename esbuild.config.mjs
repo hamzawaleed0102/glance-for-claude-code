@@ -56,6 +56,10 @@ function copyStatic() {
     fs.copyFileSync('src/markers/hook.mjs', 'out/markers/hook.mjs');
     fs.chmodSync('out/markers/hook.mjs', 0o755);
   }
+  if (fs.existsSync('src/markers/mcp-server.mjs')) {
+    fs.copyFileSync('src/markers/mcp-server.mjs', 'out/markers/mcp-server.mjs');
+    fs.chmodSync('out/markers/mcp-server.mjs', 0o755);
+  }
 }
 
 if (watch) {

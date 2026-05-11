@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.3 — 2026-05-12
+
+- Docs: trim README to the user-facing surface (remove contributor-only build/test instructions).
+
 ## 0.0.2 — 2026-05-12
 
 - Fix: clear the yellow "needs attention" marker when a turn ends, so answering or cancelling an interactive picker no longer leaves the card stuck in a waiting state.

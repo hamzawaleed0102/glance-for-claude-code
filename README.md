@@ -82,29 +82,6 @@ The dropdown chevron next to **+ New Session** lets you choose Opus / Sonnet / H
 
 Double-click a card title to rename it. Renames are sticky — AI updates won't overwrite a manual title until you `/clear` the session.
 
-## Build from source
-
-Package manager is **pnpm** (the postinstall step chmods `node-pty`'s `spawn-helper`, which the hoisted layout depends on — npm/yarn won't work).
-
-```bash
-git clone https://github.com/hamzawaleed0102/glancer-vscode.git
-cd glancer-vscode
-pnpm install
-pnpm run build
-code .
-# Press F5 to launch the Extension Development Host.
-```
-
-`pnpm run watch` runs esbuild in watch mode for the extension host, the webview, and the test build.
-
-### Tests
-
-```bash
-pnpm run test
-```
-
-Plain `node:test` files compiled by esbuild and executed against `out/`. To add a test file, list it in both `esbuild.config.mjs` (`testEntries`) and the `scripts.test` entry in `package.json`.
-
 ## License
 
-MIT. See [`LICENSE`](./LICENSE).
+MIT.

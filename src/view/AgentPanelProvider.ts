@@ -22,24 +22,6 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
    * at the panel.
    */
   private panelFocused = false;
-  /**
-   * Whether we've already widened the panel for this VS Code session. The
-   * first time the user focuses Glancer, we call `increaseViewSize` a few
-   * times to give the agent cards more breathing room — but we only do it
-   * once per session so subsequent focuses don't keep stacking the width
-   * (and so a user who manually resized smaller doesn't get stomped on
-   * every time they Cmd+Shift+G back).
-   */
-  private hasExpanded = false;
-  /**
-   * Tracks whether we've toggled the bottom panel into its maximized
-   * state. `workbench.action.toggleMaximizedPanel` is a TOGGLE, so we
-   * can't safely call it twice in a row — we'd un-maximize. We flip this
-   * true after maximizing, and reset it to false on every blur because
-   * VS Code automatically un-maximizes when the user focuses an editor.
-   * That way each return to Glancer re-maxes the panel for them.
-   */
-  private weMaximizedPanel = false;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -144,43 +126,6 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
     return false;
   }
 
-  /**
-   * Drive the bottom-panel maximize state to match `want`. The underlying
-   * `workbench.action.toggleMaximizedPanel` command is a pure toggle, so
-   * we cache our last-applied state and skip the call when no transition
-   * is needed. This keeps focus/blur paired (max on focus, un-max on
-   * blur) without double-toggling.
-   */
-  private async setPanelMaximized(want: boolean): Promise<void> {
-    if (this.weMaximizedPanel === want) return;
-    this.weMaximizedPanel = want;
-    try {
-      await vscode.commands.executeCommand('workbench.action.toggleMaximizedPanel');
-    } catch {
-      // Command unavailable on older VS Code builds — skip silently.
-    }
-  }
-
-  /**
-   * Widen the sidebar so the agent cards have more horizontal room. VS
-   * Code doesn't expose a "set view width" API, only the +30px-per-call
-   * `workbench.action.increaseViewSize` command — so we call it a fixed
-   * number of times to reach roughly 240px wider than the default. Caps
-   * automatically once the view hits its configured max width.
-   */
-  private async expandPanelOnce(): Promise<void> {
-    if (this.hasExpanded) return;
-    this.hasExpanded = true;
-    for (let i = 0; i < 8; i++) {
-      try {
-        await vscode.commands.executeCommand('workbench.action.increaseViewSize');
-      } catch {
-        // Command unavailable in older VS Code builds — skip silently.
-        return;
-      }
-    }
-  }
-
   focus(): void {
     // `show(true)` here means `preserveFocus = true` for the *view* — i.e.
     // expand & reveal it but don't yank focus to it. Counter-intuitive name,
@@ -234,18 +179,6 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
         break;
       case 'panelFocus':
         this.panelFocused = m.focused;
-        if (m.focused) {
-          this.expandPanelOnce();
-          // Ensure the bottom panel is visible — if Cmd+J hid it, calling
-          // terminal.show() on the active agent un-hides the panel and
-          // brings that terminal into view without stealing focus.
-          this.manager.revealActiveTerminal();
-          this.setPanelMaximized(true);
-        } else {
-          // Restore the panel to its original position when Glancer loses
-          // focus, so the editor isn't hidden by a stale maximized panel.
-          this.setPanelMaximized(false);
-        }
         break;
       case 'kill':
         this.manager.kill(m.id);

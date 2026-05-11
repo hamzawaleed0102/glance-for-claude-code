@@ -63,81 +63,142 @@ body {
 /* ---------- Card ---------- */
 .agent-card {
   position: relative;
-  /* Left padding reserves space for the absolutely-positioned status icon
-     so the title never shifts when the icon appears or disappears. */
-  padding: 8px 28px 8px 22px;
-  border: 1px solid transparent;
-  border-radius: 4px;
+  padding: 11px 30px 11px 18px;
+  border: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.025) 0%,
+    rgba(255, 255, 255, 0.01) 100%
+  );
   cursor: pointer;
-  margin-bottom: 4px;
-  transition: background 120ms ease, border-color 120ms ease;
+  margin-bottom: 8px;
+  transition: transform 140ms ease, background 140ms ease,
+    border-color 140ms ease, box-shadow 140ms ease;
+  overflow: hidden;
 }
-.agent-card:hover { background: var(--hover); }
-.agent-card.active {
-  background: var(--active);
-  color: var(--active-fg);
-  border-color: var(--accent);
-}
-.agent-card.starting { opacity: 0.72; }
 
-/* Status rail — single absolute icon, never displaces other content */
+/* Status-colored left accent stripe. Width grows when active. */
+.agent-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: transparent;
+  transition: width 160ms ease, background 160ms ease;
+}
+
+.agent-card:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.045) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.14);
+  transform: translateY(-1px);
+}
+
+.agent-card.active {
+  background: linear-gradient(
+    180deg,
+    rgba(99, 162, 255, 0.10) 0%,
+    rgba(99, 162, 255, 0.04) 100%
+  );
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 1px rgba(99, 162, 255, 0.25),
+    0 4px 14px rgba(0, 0, 0, 0.28);
+}
+.agent-card.active::before { width: 4px; }
+.agent-card.starting { opacity: 0.85; }
+
+/* Per-status accent stripe colors. */
+.agent-card.status-idle::before     { background: rgba(255, 255, 255, 0.10); }
+.agent-card.status-starting::before { background: var(--accent); animation: stripe-pulse 1.5s ease-in-out infinite; }
+.agent-card.status-streaming::before{ background: var(--accent); animation: stripe-pulse 1.5s ease-in-out infinite; }
+.agent-card.status-attention::before{ background: var(--warn); }
+.agent-card.status-error::before    { background: var(--danger); }
+.agent-card.status-done::before     { background: var(--done); }
+
+@keyframes stripe-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+/* Status badge — small chip in top-right, color-coded to status. */
 .agent-status {
   position: absolute;
-  left: 8px;
+  right: 30px;
   top: 11px;
-  width: 8px;
-  height: 8px;
+  width: 14px;
+  height: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 50%;
+  letter-spacing: -0.02em;
   pointer-events: auto;
 }
-.agent-status.dot { border-radius: 50%; }
-.agent-status.starting {
-  background: var(--accent);
-  animation: pulse 1.2s ease-in-out infinite;
+.agent-status.dot {
+  width: 8px;
+  height: 8px;
 }
+.agent-status.starting,
 .agent-status.streaming {
   background: var(--accent);
-  animation: pulse 1.2s ease-in-out infinite;
+  box-shadow: 0 0 0 3px rgba(99, 162, 255, 0.18);
+  animation: dot-pulse 1.4s ease-in-out infinite;
 }
-.agent-status.attention { background: var(--warn); }
-.agent-status.error { background: var(--danger); }
+.agent-status.attention {
+  background: var(--warn);
+  box-shadow: 0 0 0 3px rgba(255, 200, 50, 0.18);
+}
+.agent-status.error {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(255, 80, 80, 0.18);
+}
 .agent-status.done {
-  color: var(--done);
-  font-size: 11px;
-  font-weight: 700;
-  background: transparent;
-  line-height: 1;
-  top: 9px;
+  color: #0d1117;
+  background: var(--done);
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18);
 }
 
-@keyframes pulse {
+@keyframes dot-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.35; transform: scale(0.85); }
+  50%      { opacity: 0.5; transform: scale(0.85); }
 }
 
 /* Title row */
 .agent-card-title {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   min-width: 0;
+  padding-right: 22px; /* clear the right-side status dot */
 }
 .agent-name {
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
   flex: 0 1 auto;
 }
+.agent-card.active .agent-name { color: var(--vscode-foreground); }
 .agent-name-input {
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   border: 1px solid var(--accent);
-  padding: 0 4px;
+  border-radius: 4px;
+  padding: 1px 5px;
   font: inherit;
+  font-weight: 600;
 }
 .agent-title-lock {
   color: var(--muted);
@@ -145,51 +206,55 @@ body {
   opacity: 0.7;
 }
 .agent-model-chip {
-  background: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
-  padding: 0 5px;
-  border-radius: 8px;
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
+  background: rgba(99, 162, 255, 0.15);
+  color: var(--accent);
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   line-height: 1.5;
 }
 
 /* Sub-line — TLDR / needs-input / error description */
 .agent-card-sub {
-  margin-top: 4px;
-  font-size: 11px;
-  line-height: 1.35;
+  margin-top: 5px;
+  font-size: 11.5px;
+  line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .agent-tldr.muted { color: var(--muted); cursor: pointer; }
 .agent-tldr.muted:hover { color: var(--fg); }
-.agent-tldr.warn { color: var(--warn); }
-.agent-tldr.danger { color: var(--danger); }
+.agent-tldr.warn { color: var(--warn); font-weight: 500; }
+.agent-tldr.danger { color: var(--danger); font-weight: 500; }
 
 /* Progress */
 .agent-progress-row {
-  margin-top: 6px;
+  margin-top: 8px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
 }
 .agent-progress-track {
-  height: 2px;
-  background: var(--border);
-  border-radius: 2px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
   overflow: hidden;
 }
 .agent-progress-fill {
   height: 100%;
-  background: var(--accent);
+  background: linear-gradient(90deg, var(--accent) 0%, #8ab4ff 100%);
+  border-radius: 3px;
   transition: width 220ms ease;
+  box-shadow: 0 0 6px rgba(99, 162, 255, 0.5);
 }
 .agent-progress-label {
   font-size: 10px;
   color: var(--muted);
+  font-style: italic;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

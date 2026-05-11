@@ -476,18 +476,19 @@ export class AgentManager implements vscode.Disposable {
       console.warn('[glancer] hook event for unknown agent', agentId);
       return;
     }
-    if (hookEvent === 'SessionStart' && sessionId) {
-      // Capture the Claude session id so we can `--resume <id>` on the next
-      // VS Code launch. The Agent fires onMetaChange, which re-persists
-      // sessions.json — but only AFTER the user has actually chatted (see
-      // persist()'s filter), since a never-used session can't be resumed.
-      agent.setSessionId(sessionId);
-      // /clear starts a fresh conversation — any tldr / attention / error
-      // / progress from the prior session is stale, and the badge would
-      // stay stuck on a now-meaningless "needs input" marker. Wipe it.
-      // (We only do this for source=clear; resume/compact preserve state,
-      // and startup never had any to begin with.)
-      if (wrapper.payload?.source === 'clear') {
+    if (hookEvent === 'SessionStart') {
+      // Capture the Claude session id (if present) so --resume works on
+      // next launch. The sessionId can be absent in some SessionStart
+      // payloads — that's fine, we don't require it for the reset.
+      if (sessionId) agent.setSessionId(sessionId);
+      // /clear (and /compact) start a fresh conversation. Any tldr /
+      // attention / error / progress from the prior session is stale,
+      // and the badge would stay stuck on a now-meaningless "needs
+      // input" marker. Wipe it. 'startup' and 'resume' deliberately
+      // preserve state.
+      const source = wrapper.payload?.source;
+      console.log('[glancer] SessionStart source=', source);
+      if (source === 'clear' || source === 'compact') {
         agent.resetCardState();
       }
     } else if (hookEvent === 'UserPromptSubmit') {

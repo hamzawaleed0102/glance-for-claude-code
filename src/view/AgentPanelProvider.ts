@@ -22,6 +22,24 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
    * at the panel.
    */
   private panelFocused = false;
+  /**
+   * Whether we've already widened the panel for this VS Code session. The
+   * first time the user focuses Glancer, we call `increaseViewSize` a few
+   * times to give the agent cards more breathing room — but we only do it
+   * once per session so subsequent focuses don't keep stacking the width
+   * (and so a user who manually resized smaller doesn't get stomped on
+   * every time they Cmd+Shift+G back).
+   */
+  private hasExpanded = false;
+  /**
+   * Tracks whether we've toggled the bottom panel into its maximized
+   * state. `workbench.action.toggleMaximizedPanel` is a TOGGLE, so we
+   * can't safely call it twice in a row — we'd un-maximize. We flip this
+   * true after maximizing, and reset it to false on every blur because
+   * VS Code automatically un-maximizes when the user focuses an editor.
+   * That way each return to Glancer re-maxes the panel for them.
+   */
+  private weMaximizedPanel = false;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -51,16 +69,7 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
           this.handleTurnComplete(evt.snapshot);
           return;
         case 'unread':
-          // Activity-bar badge. `undefined` removes it entirely so a stale
-          // "0" never lingers on the icon.
-          if (this.view) {
-            this.view.badge = evt.total > 0
-              ? {
-                  value: evt.total,
-                  tooltip: `${evt.total} agent update${evt.total === 1 ? '' : 's'} waiting`,
-                }
-              : undefined;
-          }
+          this.updateBadge();
           return;
       }
       console.log('[glancer] postMessage →', msg);
@@ -76,20 +85,38 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
     };
     view.webview.html = this.html(view.webview);
     view.webview.onDidReceiveMessage((m: WebviewToHost) => this.handle(m));
+    // Seed the badge from current state. Agents may have been restored
+    // (with persisted attention/error markers) BEFORE this view resolved,
+    // so the `unread` events fired during restore would have hit a null
+    // view and been dropped.
+    this.updateBadge();
   }
 
   /**
-   * Single decision point for turn-complete reactions:
-   *   - If user is watching this agent → do nothing.
-   *   - Otherwise → bump unread badge + show toast.
-   * "Watching" means VS Code is focused AND either the panel is focused
-   * (active card visible) or the agent's terminal is the active one. If
-   * VS Code itself is unfocused, the user is in another app — always
-   * surface the alert.
+   * Single point that pushes the current attention-count to the
+   * activity-bar badge. Called from both the `unread` event handler and
+   * `resolveWebviewView` so the badge stays in sync with manager state.
+   */
+  private updateBadge(): void {
+    if (!this.view) return;
+    const total = this.manager.unreadCount();
+    console.log('[glancer] badge update → total =', total);
+    this.view.badge = total > 0
+      ? {
+          value: total,
+          tooltip: `${total} agent${total === 1 ? '' : 's'} need attention`,
+        }
+      : undefined;
+  }
+
+  /**
+   * Toast-only turn-complete handler. The activity-bar badge is driven
+   * separately by `unread` events the manager emits whenever any agent's
+   * attentionReason/errorReason changes — no explicit mark-as-read
+   * bookkeeping here.
    */
   private handleTurnComplete(snapshot: import('../shared/messages').AgentSnapshot): void {
     if (this.userIsWatching(snapshot.id)) return;
-    this.manager.markUnread(snapshot.id);
 
     // Prefer attentionReason (Notification hook) over tldr (Stop hook) —
     // an "awaiting input" message is more actionable than a turn summary.
@@ -102,10 +129,56 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  /**
+   * "Is the user actively watching THIS agent right now?" — used to gate
+   * both the toast and the unread badge. Strict per-agent check: panel
+   * focus alone isn't enough (the user might be looking at a different
+   * card), only panel-focused + this-agent-is-active counts. This means
+   * an agent finishing in the background still bumps the badge even when
+   * you're in Glancer looking at a different session.
+   */
   private userIsWatching(id: string): boolean {
     if (!vscode.window.state.focused) return false;
-    if (this.panelFocused) return true;
-    return this.manager.isAgentTerminalActive(id);
+    if (this.manager.isAgentTerminalActive(id)) return true;
+    if (this.panelFocused && this.manager.getActiveId() === id) return true;
+    return false;
+  }
+
+  /**
+   * Drive the bottom-panel maximize state to match `want`. The underlying
+   * `workbench.action.toggleMaximizedPanel` command is a pure toggle, so
+   * we cache our last-applied state and skip the call when no transition
+   * is needed. This keeps focus/blur paired (max on focus, un-max on
+   * blur) without double-toggling.
+   */
+  private async setPanelMaximized(want: boolean): Promise<void> {
+    if (this.weMaximizedPanel === want) return;
+    this.weMaximizedPanel = want;
+    try {
+      await vscode.commands.executeCommand('workbench.action.toggleMaximizedPanel');
+    } catch {
+      // Command unavailable on older VS Code builds — skip silently.
+    }
+  }
+
+  /**
+   * Widen the sidebar so the agent cards have more horizontal room. VS
+   * Code doesn't expose a "set view width" API, only the +30px-per-call
+   * `workbench.action.increaseViewSize` command — so we call it a fixed
+   * number of times to reach roughly 240px wider than the default. Caps
+   * automatically once the view hits its configured max width.
+   */
+  private async expandPanelOnce(): Promise<void> {
+    if (this.hasExpanded) return;
+    this.hasExpanded = true;
+    for (let i = 0; i < 8; i++) {
+      try {
+        await vscode.commands.executeCommand('workbench.action.increaseViewSize');
+      } catch {
+        // Command unavailable in older VS Code builds — skip silently.
+        return;
+      }
+    }
   }
 
   focus(): void {
@@ -161,12 +234,17 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
         break;
       case 'panelFocus':
         this.panelFocused = m.focused;
-        // Panel just became focused — the user is now looking at the
-        // active card, so clear its unread mark. Other agents with unread
-        // turn-completes stay marked until the user navigates to them.
         if (m.focused) {
-          const activeId = this.manager.getActiveId();
-          if (activeId) this.manager.markRead(activeId);
+          this.expandPanelOnce();
+          // Ensure the bottom panel is visible — if Cmd+J hid it, calling
+          // terminal.show() on the active agent un-hides the panel and
+          // brings that terminal into view without stealing focus.
+          this.manager.revealActiveTerminal();
+          this.setPanelMaximized(true);
+        } else {
+          // Restore the panel to its original position when Glancer loses
+          // focus, so the editor isn't hidden by a stale maximized panel.
+          this.setPanelMaximized(false);
         }
         break;
       case 'kill':

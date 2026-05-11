@@ -103,30 +103,15 @@ export class Agent implements vscode.Disposable {
   readonly onTurnComplete = this.turnCompleteEmitter.event;
 
   /**
-   * Per-agent unread flag. True from the moment a turn completes (and the
-   * provider decides the user wasn't watching) until the user interacts
-   * with this agent in some way — selecting, focusing its terminal, or
-   * submitting another prompt. The manager aggregates these into the
-   * activity-bar badge count.
-   *
-   * Intentionally NOT persisted: a fresh extension activation starts with
-   * zero unread, matching how most apps reset notification state on launch.
+   * True when the card is currently showing an "attention" signal that
+   * warrants user action: an interactive prompt waiting on them, or a
+   * hard error blocking progress. The manager sums these across all
+   * agents into the activity-bar badge count. Computed from state, not
+   * tracked separately — clearTransient (UserPromptSubmit) wipes both,
+   * which naturally drops this back to false.
    */
-  private _hasUnread = false;
-  private readonly unreadChangeEmitter = new vscode.EventEmitter<void>();
-  readonly onUnreadChange = this.unreadChangeEmitter.event;
-  get hasUnread(): boolean {
-    return this._hasUnread;
-  }
-  markUnread(): void {
-    if (this._hasUnread) return;
-    this._hasUnread = true;
-    this.unreadChangeEmitter.fire();
-  }
-  markRead(): void {
-    if (!this._hasUnread) return;
-    this._hasUnread = false;
-    this.unreadChangeEmitter.fire();
+  get needsAttention(): boolean {
+    return this._attentionReason !== null || this._errorReason !== null;
   }
 
   constructor(init: AgentInit) {
@@ -298,6 +283,52 @@ export class Agent implements vscode.Disposable {
     this.metaChangeEmitter.fire();
   }
 
+  /**
+   * Wipe every per-turn card marker AND the title back to default.
+   * Used when Claude runs /clear (SessionStart with source='clear') —
+   * the conversation just got reset, so any "needs input" / error /
+   * tldr / progress / AI-assigned title carried over from the prior
+   * conversation is stale. The title reverts to `glancer-XX` so the
+   * next turn's update_state can claim a fresh title.
+   *
+   * Also persists by writing nulls into the state file so the on-disk
+   * snapshot used to seed dormant restores doesn't bring the stale
+   * markers back on the next reload. Re-fires metaChange so sessions.json
+   * picks up the title reset.
+   */
+  resetCardState(): void {
+    const patch: Partial<AgentSnapshot> = {};
+    const defaultName = `glancer-${this.id.slice(3)}`;
+    if (this._name !== defaultName || this._titleSource !== 'default') {
+      this._name = defaultName;
+      this._titleSource = 'default';
+      patch.name = defaultName;
+      patch.titleSource = 'default';
+      this.claude?.setName(defaultName);
+    }
+    if (this._tldr !== null) { this._tldr = null; patch.tldr = null; }
+    if (this._attentionReason !== null) { this._attentionReason = null; patch.attentionReason = null; }
+    if (this._errorReason !== null) { this._errorReason = null; patch.errorReason = null; }
+    if (this._progress !== null) { this._progress = null; patch.progress = null; }
+    if (this._streaming) { this._streaming = false; patch.streaming = false; }
+    if (Object.keys(patch).length > 0) this.changeEmitter.fire(patch);
+    if (patch.name !== undefined) this.metaChangeEmitter.fire();
+    // Overwrite the persisted state file so a dormant restore re-seeds
+    // from a clean slate (including the reset title).
+    try {
+      fs.writeFileSync(
+        this.stateFilePath,
+        JSON.stringify(
+          { title: this._name, tldr: null, progress: null, needsInput: null, error: null },
+          null,
+          2,
+        ),
+      );
+    } catch {
+      // Non-fatal — the next MCP update_state call will overwrite anyway.
+    }
+  }
+
   /** Called by AgentManager when Claude's Stop hook fires for this agent. */
   notifyTurnComplete(): void {
     // Explicit "turn ended" — flip streaming off so the bubble goes away
@@ -441,7 +472,6 @@ export class Agent implements vscode.Disposable {
     this.exitEmitter.dispose();
     this.metaChangeEmitter.dispose();
     this.turnCompleteEmitter.dispose();
-    this.unreadChangeEmitter.dispose();
   }
 
   /**

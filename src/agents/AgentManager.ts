@@ -295,9 +295,15 @@ export class AgentManager implements vscode.Disposable {
       initialSnapshot: opts.initialSnapshot,
       hasUserPrompt: opts.hasUserPrompt,
     });
-    agent.onChange((fields) =>
-      this.changeEmitter.fire({ type: 'updated', id: opts.id, fields }),
-    );
+    agent.onChange((fields) => {
+      this.changeEmitter.fire({ type: 'updated', id: opts.id, fields });
+      // Any change to attentionReason or errorReason can shift the badge
+      // count. Cheap: O(agents). Re-emit unconditionally on any update so
+      // we don't have to special-case those fields here AND in setNeedsAttention.
+      if ('attentionReason' in fields || 'errorReason' in fields) {
+        this.emitUnreadCount();
+      }
+    });
     agent.onMetaChange(() => this.persist());
     agent.onTurnComplete(() =>
       this.changeEmitter.fire({
@@ -306,7 +312,6 @@ export class AgentManager implements vscode.Disposable {
         snapshot: agent.snapshot(),
       }),
     );
-    agent.onUnreadChange(() => this.emitUnreadCount());
     // NOTE: we deliberately do NOT auto-remove on PTY exit. VS Code reload
     // and accidental terminal closure both fire exit, and removing on those
     // events wipes sessions.json out from under us. The Agent transitions
@@ -345,7 +350,7 @@ export class AgentManager implements vscode.Disposable {
   private removeAgent(id: string): void {
     const a = this.agents.get(id);
     if (!a) return;
-    const wasUnread = a.hasUnread;
+    const wasCounted = a.needsAttention;
     // Delete from the map FIRST so the async `proc.onExit` triggered by
     // `a.dispose()` re-enters this function as a no-op.
     this.agents.delete(id);
@@ -359,16 +364,14 @@ export class AgentManager implements vscode.Disposable {
     // agent with the same id (very unlikely) doesn't pick up stale markers.
     a.purgePersistentState();
     this.persist();
-    // Removing an unread agent drops the badge count by one — re-emit so
-    // the activity-bar badge stays in sync.
-    if (wasUnread) this.emitUnreadCount();
+    // Removing an attention-state agent drops the badge by one.
+    if (wasCounted) this.emitUnreadCount();
   }
 
   select(id: string): void {
     const a = this.agents.get(id);
     if (!a) return;
     this.setActive(id);
-    a.markRead();
     a.reveal();
   }
 
@@ -381,7 +384,6 @@ export class AgentManager implements vscode.Disposable {
     const a = this.agents.get(id);
     if (!a) return;
     this.setActive(id);
-    a.markRead();
     a.focusTerminal();
   }
 
@@ -390,27 +392,32 @@ export class AgentManager implements vscode.Disposable {
     return !!this.agents.get(id)?.isTerminalActive();
   }
 
-  /** Mark agent as unread (e.g. its turn completed off-screen). */
-  markUnread(id: string): void {
-    this.agents.get(id)?.markUnread();
+  /**
+   * Reveal the active agent's terminal without stealing focus. Used by
+   * the provider when the user focuses Glancer — calling `terminal.show()`
+   * un-hides the bottom panel if it was Cmd+J'd, so the user lands in a
+   * workspace where both panels are visible.
+   */
+  revealActiveTerminal(): void {
+    if (!this.activeId) return;
+    this.agents.get(this.activeId)?.reveal();
   }
 
-  /** Mark agent as read (user interacted with it). */
-  markRead(id: string): void {
-    this.agents.get(id)?.markRead();
-  }
-
-  /** Total unread agents — drives the activity-bar badge count. */
+  /**
+   * Total agents currently showing an "attention" or "error" marker.
+   * Drives the activity-bar badge — simple state-derived count, no
+   * "read/unread" bookkeeping. As soon as Claude clears the attentionReason
+   * (e.g. via clearTransient on the next UserPromptSubmit) the count drops.
+   */
   unreadCount(): number {
     let n = 0;
-    for (const a of this.agents.values()) if (a.hasUnread) n++;
+    for (const a of this.agents.values()) if (a.needsAttention) n++;
     return n;
   }
 
   /**
-   * Fire `unread` event with the current total. Called any time an agent's
-   * unread flag changes, or an agent is removed (since removal can drop the
-   * count when an unread agent gets killed).
+   * Fire `unread` event with the current total. Called whenever an agent's
+   * attentionReason/errorReason changes, or an agent is removed.
    */
   private emitUnreadCount(): void {
     this.changeEmitter.fire({ type: 'unread', total: this.unreadCount() });
@@ -448,7 +455,16 @@ export class AgentManager implements vscode.Disposable {
     if (typeof payload !== 'object' || payload === null) return;
     const wrapper = payload as {
       agentId?: string;
-      payload?: { hook_event_name?: string; session_id?: string; prompt?: string };
+      payload?: {
+        hook_event_name?: string;
+        session_id?: string;
+        prompt?: string;
+        message?: string;
+        // SessionStart hook reports how the session began. Values per
+        // Claude Code: 'startup' (fresh), 'resume' (--resume <id>),
+        // 'clear' (/clear), 'compact' (/compact).
+        source?: 'startup' | 'resume' | 'clear' | 'compact';
+      };
     };
     const agentId = wrapper.agentId;
     const hookEvent = wrapper.payload?.hook_event_name;
@@ -466,15 +482,22 @@ export class AgentManager implements vscode.Disposable {
       // sessions.json — but only AFTER the user has actually chatted (see
       // persist()'s filter), since a never-used session can't be resumed.
       agent.setSessionId(sessionId);
+      // /clear starts a fresh conversation — any tldr / attention / error
+      // / progress from the prior session is stale, and the badge would
+      // stay stuck on a now-meaningless "needs input" marker. Wipe it.
+      // (We only do this for source=clear; resume/compact preserve state,
+      // and startup never had any to begin with.)
+      if (wrapper.payload?.source === 'clear') {
+        agent.resetCardState();
+      }
     } else if (hookEvent === 'UserPromptSubmit') {
       // First UserPromptSubmit promotes the agent from "empty session"
       // (won't survive --resume) to "real session" (persisted across
-      // launches). Also clears transient marker rows.
+      // launches). Also clears transient marker rows — that wipes
+      // attentionReason/errorReason which naturally drops this agent's
+      // badge contribution.
       agent.markUserPrompted();
       agent.clearTransient();
-      // Submitting a new prompt means the user is actively engaging with
-      // this agent — clear its unread badge contribution.
-      agent.markRead();
     } else if (hookEvent === 'Stop') {
       // Claude's Stop hook fires when a response finishes — the canonical
       // "agent done, ball is in user's court" signal. We bubble this up so

@@ -31,16 +31,23 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .panel-header-count { color: var(--muted); margin-left: 6px; font-variant-numeric: tabular-nums; }
-.panel-actions { display: flex; gap: 4px; }
+.panel-actions { display: flex; gap: 6px; align-items: center; }
 .icon-btn {
   background: transparent;
   border: 1px solid transparent;
   color: var(--fg);
   cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 3px;
+  font-size: 18px;
+  line-height: 1;
+  min-width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border-radius: 4px;
 }
-.icon-btn:hover { border-color: var(--border); }
+.icon-btn:hover { border-color: var(--border); background: var(--row-hover, rgba(255, 255, 255, 0.04)); }
 .tree-search input {
   width: 100%;
   padding: 4px 6px;

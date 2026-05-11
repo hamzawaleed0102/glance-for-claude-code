@@ -1,6 +1,6 @@
 {
-  "name": "glancer-vscode",
-  "displayName": "Glance - Claude Code",
+  "name": "glance-claude-code",
+  "displayName": "Glance for Claude Code",
   "description": "Multi-session Claude Code agent panel for VS Code.",
   "version": "0.0.1",
   "publisher": "hamzawaleed",

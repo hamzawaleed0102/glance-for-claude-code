@@ -1,0 +1,53 @@
+:root {
+  --bg: var(--vscode-sideBar-background);
+  --fg: var(--vscode-foreground);
+  --muted: var(--vscode-descriptionForeground);
+  --accent: var(--vscode-focusBorder);
+  --danger: var(--vscode-errorForeground);
+  --warn: var(--vscode-editorWarning-foreground);
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--vscode-font-family); font-size: 12px; margin: 0; padding: 0; }
+.agent-panel { display: flex; flex-direction: column; height: 100vh; outline: none; }
+.panel-header { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--vscode-panel-border); }
+.panel-header-count { color: var(--muted); margin-left: 6px; }
+.panel-actions { display: flex; gap: 4px; }
+.icon-btn { background: transparent; border: 1px solid transparent; color: var(--fg); cursor: pointer; padding: 2px 6px; }
+.icon-btn:hover { border-color: var(--vscode-panel-border); }
+.tree-search input { width: 100%; padding: 4px 6px; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border, transparent); }
+.agent-list { flex: 1; overflow: auto; padding: 4px; }
+.agent-empty { padding: 24px 12px; display: flex; flex-direction: column; align-items: center; }
+.faint { color: var(--muted); }
+.agent-card { position: relative; padding: 6px 8px; border: 1px solid transparent; border-radius: 3px; cursor: pointer; margin-bottom: 2px; }
+.agent-card:hover { background: var(--vscode-list-hoverBackground); }
+.agent-card.active { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.agent-card-row { display: flex; align-items: center; gap: 6px; }
+.agent-card-row.bottom { margin-top: 2px; font-size: 11px; color: var(--muted); }
+.agent-name-wrap { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
+.agent-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-name-input { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--accent); padding: 0 4px; }
+.agent-status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.agent-status-dot.streaming { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+.agent-title-lock { color: var(--muted); font-size: 10px; }
+.agent-model-chip { background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); padding: 0 4px; border-radius: 2px; }
+.agent-model-detail { color: var(--muted); }
+.agent-flag { display: inline-flex; align-items: center; gap: 4px; padding: 0 4px; border-radius: 2px; }
+.agent-flag.warn { background: rgba(255,180,107,0.15); color: var(--warn); }
+.agent-flag.danger { background: rgba(255,107,125,0.15); color: var(--danger); }
+.agent-flag-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.agent-progress-row { margin-top: 4px; }
+.agent-progress-label { font-size: 10px; color: var(--muted); margin-bottom: 2px; }
+.agent-progress-track { height: 3px; background: var(--vscode-panel-border); border-radius: 2px; overflow: hidden; }
+.agent-progress-fill { height: 100%; background: var(--accent); transition: width 200ms linear; }
+.agent-tldr { display: flex; gap: 6px; margin-top: 4px; align-items: center; font-size: 11px; color: var(--muted); }
+.agent-tts-btn { background: transparent; border: 1px solid var(--vscode-panel-border); color: var(--fg); padding: 0 4px; cursor: pointer; border-radius: 2px; }
+.agent-tldr-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-kill { position: absolute; top: 4px; right: 4px; background: transparent; border: none; color: var(--muted); cursor: pointer; padding: 0 4px; }
+.agent-kill:hover { color: var(--danger); }
+.new-agent-btn { display: flex; padding: 6px 8px; border-top: 1px solid var(--vscode-panel-border); position: relative; }
+.new-agent-btn-main { flex: 1; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 4px; cursor: pointer; }
+.new-agent-btn-main:hover { background: var(--vscode-button-hoverBackground); }
+.new-agent-btn-chevron { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-left: 1px solid var(--vscode-panel-border); padding: 0 8px; cursor: pointer; }
+.model-picker { position: absolute; bottom: 100%; left: 8px; right: 8px; background: var(--vscode-menu-background); border: 1px solid var(--vscode-panel-border); }
+.model-picker button { display: block; width: 100%; background: transparent; color: var(--vscode-menu-foreground); border: none; text-align: left; padding: 6px 8px; cursor: pointer; }
+.model-picker button:hover { background: var(--vscode-menu-selectionBackground); color: var(--vscode-menu-selectionForeground); }

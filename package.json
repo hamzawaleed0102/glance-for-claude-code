@@ -1,0 +1,60 @@
+{
+  "name": "glancer-vscode",
+  "displayName": "Glancer",
+  "description": "Multi-session Claude Code agent panel for VS Code.",
+  "version": "0.0.1",
+  "publisher": "glancer",
+  "engines": { "vscode": "^1.90.0" },
+  "main": "./out/extension.js",
+  "activationEvents": ["onView:glancer.agents"],
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "test": "node --test out/extractMarkers.test.js out/transcriptWatcher.test.js",
+    "vscode:prepublish": "pnpm run build"
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "glancer", "title": "Glancer", "icon": "resources/glancer.svg" }
+      ]
+    },
+    "views": {
+      "glancer": [
+        { "id": "glancer.agents", "name": "Agents", "type": "webview" }
+      ]
+    },
+    "commands": [
+      { "command": "glancer.focusPanel", "title": "Glancer: Focus Agent Panel" },
+      { "command": "glancer.newAgent", "title": "Glancer: New Agent" },
+      { "command": "glancer.killActive", "title": "Glancer: Kill Active Agent" }
+    ],
+    "keybindings": [
+      { "command": "glancer.focusPanel", "key": "ctrl+shift+a", "mac": "cmd+shift+a" },
+      { "command": "glancer.newAgent", "key": "ctrl+alt+n", "mac": "cmd+alt+n" },
+      {
+        "command": "glancer.killActive",
+        "key": "ctrl+backspace",
+        "mac": "cmd+backspace",
+        "when": "focusedView == glancer.agents"
+      }
+    ]
+  },
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "node-pty": "^1.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.4.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "node-pty"]
+  }
+}

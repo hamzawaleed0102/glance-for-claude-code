@@ -1,6 +1,6 @@
 {
   "name": "glancer-vscode",
-  "displayName": "Glancer",
+  "displayName": "Glance - Claude Code",
   "description": "Multi-session Claude Code agent panel for VS Code.",
   "version": "0.0.1",
   "publisher": "hamzawaleed",
@@ -30,7 +30,7 @@
   "contributes": {
     "viewsContainers": {
       "activitybar": [
-        { "id": "glancer", "title": "Glancer", "icon": "resources/glancer.svg" }
+        { "id": "glancer", "title": "Glance", "icon": "resources/glancer.svg" }
       ]
     },
     "views": {
@@ -39,9 +39,9 @@
       ]
     },
     "commands": [
-      { "command": "glancer.focusPanel", "title": "Glancer: Focus Agent Panel" },
-      { "command": "glancer.newAgent", "title": "Glancer: New Agent" },
-      { "command": "glancer.killActive", "title": "Glancer: Kill Active Agent" }
+      { "command": "glancer.focusPanel", "title": "Glance: Focus Agent Panel" },
+      { "command": "glancer.newAgent", "title": "Glance: New Agent" },
+      { "command": "glancer.killActive", "title": "Glance: Kill Active Agent" }
     ],
     "keybindings": [
       { "command": "glancer.focusPanel", "key": "ctrl+shift+g", "mac": "cmd+shift+g" },

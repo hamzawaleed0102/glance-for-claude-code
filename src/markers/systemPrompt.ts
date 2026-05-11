@@ -2,13 +2,13 @@
  * Appended to every interactive Claude session via `--append-system-prompt`.
  *
  * Claude updates the agent card by calling the `update_state` MCP tool
- * advertised by the Glancer MCP server. The state file path is read from
+ * advertised by the Glance MCP server. The state file path is read from
  * the inherited `GLANCER_STATE_FILE` env var server-side, so this prompt is
  * identical across agents.
  */
 export function summarySystemPrompt(_stateFilePath: string): string {
   return (
-    'You are running inside Glancer, a multi-session agent panel. Glancer ' +
+    'You are running inside Glance, a multi-session agent panel. Glance ' +
     'renders a small card for this session showing a title, a one-sentence ' +
     'TL;DR, a progress bar, and "needs input" / "error" flags.\n\n' +
     'You update that card by calling the MCP tool `update_state` from the ' +

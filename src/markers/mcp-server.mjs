@@ -57,7 +57,7 @@ const TOOLS = [
   {
     name: TOOL_NAME,
     description:
-      "Update the Glancer agent card — the small UI panel showing this " +
+      "Update the Glance agent card — the small UI panel showing this " +
       "session's title, TL;DR, progress bar, and needs-input/error flags. " +
       'You MUST call this as the LAST action of EVERY response (short, ' +
       'long, trivial, or mid-tool-chain), with ALL FIVE fields populated. ' +

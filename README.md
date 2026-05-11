@@ -1,6 +1,6 @@
-# Glancer (VS Code)
+# Glance - Claude Code
 
-A VS Code extension that brings Glancer's multi-session Claude Code agent
+A VS Code extension that brings a multi-session Claude Code agent
 panel into VS Code. Each agent runs in a real VS Code terminal; markers
 (`🔊 TL;DR`, `🏷️ Title`, `⚠️ Needs input`, `❌ Error`, `📊 Progress`) are
 read from Claude Code's JSONL transcript and surfaced on per-agent cards in
@@ -24,14 +24,15 @@ code .
 ```
 
 In the dev host window, open any local project folder, then click the
-Glancer icon in the activity bar.
+Glance icon in the activity bar.
 
 ## Keybindings
 
 | Action | Shortcut |
 | --- | --- |
-| Focus panel | `Cmd+Shift+A` / `Ctrl+Shift+A` |
-| New agent | `Cmd+Alt+N` / `Ctrl+Alt+N` |
+| Focus panel | `Cmd+Shift+G` / `Ctrl+Shift+G` |
+| New agent (panel focused) | `Cmd+Shift+G` / `Ctrl+Shift+G` |
+| New agent (global) | `Cmd+Alt+N` / `Ctrl+Alt+N` |
 | Kill active (panel focused) | `Cmd+Backspace` / `Ctrl+Backspace` |
 | Cycle agents (panel focused) | `↑` / `↓` |
 
@@ -52,7 +53,7 @@ Three layers:
 3. **Webview (React)** — sidebar agent list, talks to the host over typed
    `postMessage` envelopes. See `src/view/webview/`.
 
-Marker pipeline mirrors Glancer:
+Marker pipeline:
 
 - `claude` is launched with `--append-system-prompt` + `--settings <hooks>`.
 - The Stop hook fires with the session UUID; we then watch the JSONL

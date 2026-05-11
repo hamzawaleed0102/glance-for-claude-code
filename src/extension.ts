@@ -13,7 +13,7 @@ export function activate(context: vscode.ExtensionContext): void {
   } catch (err) {
     console.error('[glancer] node-pty failed to load', err);
     vscode.window.showErrorMessage(
-      `Glancer: failed to load node-pty — ${err instanceof Error ? err.message : String(err)}`,
+      `Glance: failed to load node-pty — ${err instanceof Error ? err.message : String(err)}`,
     );
   }
   manager = new AgentManager({ context });

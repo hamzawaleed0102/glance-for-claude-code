@@ -1,8 +1,8 @@
 # Glance for Claude Code
 
-Run multiple Claude Code sessions side-by-side in VS Code, with a live status card for each one.
+by [Hamza Waleed](https://hamzawaleed.com)
 
-[![Install from VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/hamzawaleed.glance-claude-code?label=VS%20Marketplace&color=2a6cf0)](https://marketplace.visualstudio.com/items?itemName=hamzawaleed.glance-claude-code)
+Run multiple Claude Code sessions side-by-side in VS Code, with a live status card for each one.
 
 ![Glance — multi-session Claude Code agent panel for VS Code](resources/readme/hero.png)
 

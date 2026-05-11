@@ -18,6 +18,7 @@ CLAUDE.md
 resources/icon-source.svg
 resources/readme/*.svg
 scripts/render-readme-pngs.mjs
+scripts/render-icon-png.mjs
 
 docs/**
 media/walkthrough/*.svg

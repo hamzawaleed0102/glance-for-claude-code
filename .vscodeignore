@@ -4,9 +4,13 @@ src/**
 node_modules/**
 !node_modules/node-pty/**
 .gitignore
+.npmrc
 .eslintrc.json
 tsconfig*.json
 esbuild.config.mjs
+pnpm-lock.yaml
+out/**/*.test.js
+out/**/*.test.js.map
 **/*.map
 **/*.ts
 **/tsconfig.json

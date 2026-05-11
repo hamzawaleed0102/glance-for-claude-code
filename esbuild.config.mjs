@@ -12,7 +12,7 @@ const hostConfig = {
   format: 'cjs',
   target: 'node18',
   sourcemap: true,
-  external: ['vscode', 'node-pty', 'chokidar', 'fsevents'],
+  external: ['vscode', 'node-pty', 'fsevents'],
 };
 
 const webviewConfig = {

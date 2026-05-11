@@ -3,7 +3,19 @@
   "displayName": "Glancer",
   "description": "Multi-session Claude Code agent panel for VS Code.",
   "version": "0.0.1",
-  "publisher": "glancer",
+  "publisher": "hamzawaleed",
+  "license": "MIT",
+  "icon": "resources/icon.png",
+  "categories": ["AI", "Chat", "Other"],
+  "keywords": ["claude", "claude-code", "agent", "ai", "anthropic"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hamzawaleed0102/glancer-vscode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hamzawaleed0102/glancer-vscode/issues"
+  },
+  "homepage": "https://github.com/hamzawaleed0102/glancer-vscode#readme",
   "engines": { "vscode": "^1.90.0" },
   "main": "./out/extension.js",
   "activationEvents": ["onView:glancer.agents"],

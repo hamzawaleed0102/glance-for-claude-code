@@ -15,7 +15,7 @@
   "bugs": {
     "url": "https://github.com/hamzawaleed0102/glancer-vscode/issues"
   },
-  "homepage": "https://github.com/hamzawaleed0102/glancer-vscode#readme",
+  "homepage": "https://marketplace.visualstudio.com/items?itemName=hamzawaleed.glance-claude-code",
   "engines": { "vscode": "^1.90.0" },
   "main": "./out/extension.js",
   "activationEvents": ["onView:glancer.agents"],

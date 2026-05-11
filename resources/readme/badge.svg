@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <rect width="320" height="320" fill="#07090c"/>
+
+  <!-- Activity bar slice -->
+  <g transform="translate(120, 60)">
+    <rect width="80" height="200" rx="6" fill="#181818"/>
+    <!-- Active stripe -->
+    <rect x="0" y="20" width="3" height="60" fill="#ffffff"/>
+    <!-- Glance icon -->
+    <g transform="translate(20, 30)" stroke="#c5c5c5" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2.5" y="10.5" width="8" height="8" rx="2.8" transform="scale(1.6)"/>
+      <rect x="13.5" y="10.5" width="8" height="8" rx="2.8" transform="scale(1.6)"/>
+      <path d="M 10.5 13 Q 12 14.5 13.5 13" transform="scale(1.6)"/>
+      <path d="M 3 11.5 L 1.2 9.5" transform="scale(1.6)"/>
+      <path d="M 21 11.5 L 22.8 9.5" transform="scale(1.6)"/>
+    </g>
+    <!-- Numeric badge -->
+    <circle cx="58" cy="34" r="11" fill="#cca700"/>
+    <text x="58" y="38" fill="#0d1117" font-size="13" font-weight="700" text-anchor="middle">2</text>
+    <!-- Dimmed siblings -->
+    <g fill="none" stroke="#858585" stroke-width="2" opacity="0.5">
+      <rect x="26" y="100" width="28" height="28" rx="3"/>
+      <circle cx="40" cy="156" r="13"/>
+    </g>
+  </g>
+</svg>

@@ -7,6 +7,15 @@ interface Props {
   active: boolean;
   onSelect: () => void;
   onKill: () => void;
+  /** True when this card is the one currently being dragged. */
+  dragging?: boolean;
+  /** True when this card is the drop target the user is hovering. */
+  dragOver?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDragLeave?: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
+  onDragEnd?: (e: React.DragEvent) => void;
 }
 
 type StatusKind = 'starting' | 'error' | 'attention' | 'streaming' | 'done' | 'idle';
@@ -59,7 +68,19 @@ function statusLabel(s: StatusKind): string {
   }
 }
 
-export function AgentCard({ agent, active, onSelect, onKill }: Props) {
+export function AgentCard({
+  agent,
+  active,
+  onSelect,
+  onKill,
+  dragging,
+  dragOver,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd,
+}: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(agent.name);
   const isLocked = agent.titleSource === 'manual' || agent.titleSource === 'rename';
@@ -82,18 +103,6 @@ export function AgentCard({ agent, active, onSelect, onKill }: Props) {
     else if (action === 'kill') onKill();
   };
 
-  const speakTldr = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!agent.tldr) return;
-    try {
-      const u = new SpeechSynthesisUtterance(agent.tldr);
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(u);
-    } catch {
-      // TTS unavailable
-    }
-  };
-
   // Description-line precedence: error > attention > tldr. Whichever exists
   // and is highest-priority occupies the single description slot.
   const description =
@@ -109,8 +118,18 @@ export function AgentCard({ agent, active, onSelect, onKill }: Props) {
         'agent-card' +
         (active ? ' active' : '') +
         (agent.starting ? ' starting' : '') +
+        (dragging ? ' dragging' : '') +
+        (dragOver ? ' drag-over' : '') +
         ` status-${status}`
       }
+      // Only draggable when not editing the rename input; otherwise the
+      // text selection would start a drag.
+      draggable={!editing}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
       onClick={editing ? undefined : onSelect}
       onContextMenu={onContextMenu}
       onDoubleClick={(e) => { e.stopPropagation(); setEditing(true); }}
@@ -157,7 +176,6 @@ export function AgentCard({ agent, active, onSelect, onKill }: Props) {
           {description && (
             <div
               className={`agent-card-sub agent-tldr ${descriptionTone}`}
-              onClick={agent.tldr && description === agent.tldr ? speakTldr : undefined}
               title={description}
             >
               {description}
@@ -185,9 +203,20 @@ export function AgentCard({ agent, active, onSelect, onKill }: Props) {
       <button
         className="agent-kill"
         title="Close session"
+        aria-label="Close session"
         onClick={(e) => { e.stopPropagation(); onKill(); }}
       >
-        ×
+        <svg
+          viewBox="0 0 12 12"
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        >
+          <line x1="3" y1="3" x2="9" y2="9" />
+          <line x1="9" y1="3" x2="3" y2="9" />
+        </svg>
       </button>
     </div>
   );

@@ -22,6 +22,19 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
    * at the panel.
    */
   private panelFocused = false;
+  /**
+   * Agent id that should grab terminal focus once-only. Set when we
+   * auto-spawn the first agent at activation, consumed either by the
+   * 120ms timeout or by the first `panelFocus(true)` we receive —
+   * whichever fires first. The double path is needed because:
+   *   - When the user clicks the Glancer icon, focus is racing with our
+   *     timeout; the 120ms delay usually wins.
+   *   - When VS Code launches with Glancer already focused (the panel
+   *     was the active view when the workspace last closed), launch
+   *     is too busy in the first 120ms — the focus call gets lost. The
+   *     panelFocus message fires later and re-attempts.
+   */
+  private pendingFocusTerminalId: string | null = null;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -106,6 +119,9 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
     const body = detail
       ? `${snapshot.name} — ${detail}`
       : `${snapshot.name} is ready`;
+    // Audible cue paired with the toast — useful when the user is in
+    // another app or another tab and the toast is off-screen.
+    this.view?.webview.postMessage({ type: 'playTone' } satisfies HostToWebview);
     vscode.window.showInformationMessage(body, 'Show').then((picked) => {
       if (picked === 'Show') this.manager.focusTerminal(snapshot.id);
     });
@@ -124,6 +140,39 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
     if (this.manager.isAgentTerminalActive(id)) return true;
     if (this.panelFocused && this.manager.getActiveId() === id) return true;
     return false;
+  }
+
+  /**
+   * Try to consume the pending focus once. Different from
+   * scheduleFocusRetries: this one is the "panelFocus arrived first"
+   * code path, single-shot.
+   */
+  private tryConsumePendingFocus(): void {
+    const id = this.pendingFocusTerminalId;
+    if (!id) return;
+    this.pendingFocusTerminalId = null;
+    this.manager.focusTerminal(id);
+  }
+
+  /**
+   * Fire `focusTerminal` at multiple delays after auto-spawn to win the
+   * focus race against VS Code's launch sequence. Each attempt no-ops
+   * once the terminal is already the active VS Code terminal — so the
+   * extra calls cost nothing once one of them lands.
+   */
+  private scheduleFocusRetries(id: string): void {
+    const delays = [150, 400, 900, 1600];
+    for (const delay of delays) {
+      setTimeout(() => {
+        // Clear the pending flag once any retry runs so the panelFocus
+        // backup path doesn't double-trigger.
+        if (this.pendingFocusTerminalId === id) {
+          this.pendingFocusTerminalId = null;
+        }
+        if (this.manager.isAgentTerminalActive(id)) return; // already won
+        this.manager.focusTerminal(id);
+      }, delay);
+    }
   }
 
   focus(): void {
@@ -153,11 +202,11 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
           if (cwd) {
             this.autoStarted = true;
             const id = this.manager.newAgent({ cwd });
-            // newAgent's internal reveal uses preserveFocus=true so the side
-            // panel still owns focus. For the auto-spawn case the user is
-            // opening Glancer expecting to start typing immediately — pull
-            // focus into the terminal so the cursor lands in Claude.
-            this.manager.focusTerminal(id);
+            this.pendingFocusTerminalId = id;
+            // Multi-shot retry — VS Code launch is busy for the first
+            // few hundred ms and a single focus call gets eaten. Each
+            // attempt no-ops once the terminal is already active.
+            this.scheduleFocusRetries(id);
           }
         }
         break;
@@ -168,7 +217,12 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
           vscode.window.showWarningMessage('Open a workspace folder first.');
           return;
         }
-        this.manager.newAgent({ cwd, model: m.model });
+        const id = this.manager.newAgent({ cwd, model: m.model });
+        // Pull focus into the new agent's terminal so the user can type
+        // immediately. Same multi-retry as the auto-spawn path because
+        // the PTY needs a beat to attach before show(false) takes effect.
+        this.pendingFocusTerminalId = id;
+        this.scheduleFocusRetries(id);
         break;
       }
       case 'select':
@@ -179,6 +233,10 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
         break;
       case 'panelFocus':
         this.panelFocused = m.focused;
+        // Second chance to focus the auto-spawned terminal — fires when
+        // VS Code launched with the Glancer panel already focused and
+        // the initial 120ms attempt happened too early to win.
+        if (m.focused) this.tryConsumePendingFocus();
         break;
       case 'kill':
         this.manager.kill(m.id);
@@ -188,6 +246,9 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
         break;
       case 'resetTitle':
         this.manager.resetTitle(m.id);
+        break;
+      case 'reorder':
+        this.manager.reorder(m.ids);
         break;
     }
   }

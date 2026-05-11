@@ -33,7 +33,12 @@ export type HostToWebview =
    * pull keyboard focus into its container, enabling Up/Down/Enter/G to be
    * handled by React without VS Code keybinding contexts.
    */
-  | { type: 'focus' };
+  | { type: 'focus' }
+  /**
+   * Play a tiny attention tone in the webview. Fires alongside the
+   * turn-complete toast notification so the user hears + sees the alert.
+   */
+  | { type: 'playTone' };
 
 export type WebviewToHost =
   | { type: 'ready' }
@@ -52,4 +57,11 @@ export type WebviewToHost =
    * Webview reports its own focus/blur state. Used by the host to suppress
    * turn-complete toasts when the user is already looking at the panel.
    */
-  | { type: 'panelFocus'; focused: boolean };
+  | { type: 'panelFocus'; focused: boolean }
+  /**
+   * User dragged a card to reorder. `ids` is the full new ordering as
+   * the webview just rendered it (so the host can adopt it verbatim and
+   * persist for next launch). The webview applies the reorder
+   * optimistically; the host treats this message as authoritative.
+   */
+  | { type: 'reorder'; ids: string[] };

@@ -495,8 +495,21 @@ export class Agent implements vscode.Disposable {
   private applyState(s: AgentState): void {
     const patch: Partial<AgentSnapshot> = {};
 
+    // Defensive normalization: Claude occasionally sends the literal
+    // STRING "null" (or "undefined", "none") instead of the JSON value
+    // null. Treat those as null so we don't end up showing the word
+    // "null" as an error message or tldr.
+    const sanitize = (v: unknown): string | null => {
+      if (typeof v !== 'string') return null;
+      const t = v.trim();
+      if (!t) return null;
+      const low = t.toLowerCase();
+      if (low === 'null' || low === 'undefined' || low === 'none') return null;
+      return t;
+    };
+
     if ('tldr' in s && s.tldr !== undefined) {
-      const next = typeof s.tldr === 'string' ? s.tldr.trim() || null : null;
+      const next = sanitize(s.tldr);
       if (next !== this._tldr) {
         this._tldr = next;
         patch.tldr = next;
@@ -504,13 +517,11 @@ export class Agent implements vscode.Disposable {
     }
     if (
       'title' in s &&
-      typeof s.title === 'string' &&
-      s.title.trim().length > 0 &&
       this._titleSource !== 'manual' &&
       this._titleSource !== 'rename'
     ) {
-      const next = s.title.trim();
-      if (next !== this._name) {
+      const next = sanitize(s.title);
+      if (next !== null && next !== this._name) {
         this._name = next;
         this._titleSource = 'ai';
         patch.name = next;
@@ -519,15 +530,14 @@ export class Agent implements vscode.Disposable {
       }
     }
     if ('needsInput' in s && s.needsInput !== undefined) {
-      const next =
-        typeof s.needsInput === 'string' ? s.needsInput.trim() || null : null;
+      const next = sanitize(s.needsInput);
       if (next !== this._attentionReason) {
         this._attentionReason = next;
         patch.attentionReason = next;
       }
     }
     if ('error' in s && s.error !== undefined) {
-      const next = typeof s.error === 'string' ? s.error.trim() || null : null;
+      const next = sanitize(s.error);
       if (next !== this._errorReason) {
         this._errorReason = next;
         patch.errorReason = next;

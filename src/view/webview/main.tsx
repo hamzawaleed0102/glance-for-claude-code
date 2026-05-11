@@ -4,6 +4,34 @@ import type { AgentSnapshot, HostToWebview } from '../../shared/messages';
 import { AgentList } from './AgentList';
 import { listenFromHost, postToHost } from './api';
 
+// Lazily-created shared AudioContext — re-used across tones so we don't
+// leak audio contexts or hit per-document limits. Some browsers gate
+// audio behind a user gesture; the user opening Glancer + their first
+// prompt submit counts.
+let audioCtx: AudioContext | null = null;
+function playAttentionTone() {
+  try {
+    if (!audioCtx) audioCtx = new AudioContext();
+    if (audioCtx.state === 'suspended') void audioCtx.resume();
+    const ctx = audioCtx;
+    const now = ctx.currentTime;
+    // Minimal single-note beep: A5 sine, ~90ms total with quick attack
+    // and exponential decay. Soft so it's not jarring across many turns.
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, now);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.08, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
+  } catch {
+    // Audio unavailable / autoplay blocked — VS Code toast still surfaces.
+  }
+}
+
 function App() {
   const [agents, setAgents] = useState<AgentSnapshot[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -60,6 +88,9 @@ function App() {
           // listens for this window event and focuses its container so
           // Up/Down/Enter/G are handled by the React keydown handler.
           window.dispatchEvent(new Event('glancer:focus'));
+          break;
+        case 'playTone':
+          playAttentionTone();
           break;
       }
     });

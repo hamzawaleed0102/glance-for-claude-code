@@ -74,22 +74,29 @@ const TOOLS = [
         title: {
           type: 'string',
           description:
-            '2-4 word descriptive title in sentence case: capitalize the ' +
-            'first word and leave the rest lowercase UNLESS they are proper ' +
-            'nouns, acronyms, product names, or technical identifiers ' +
-            '(React, OAuth, S3, IPC, etc). Examples: "Debug auth flow", ' +
-            '"Add OAuth login", "Refactor Redux store". Do NOT title-case ' +
-            'ordinary words and do NOT lowercase proper nouns. Set on the ' +
-            'FIRST call of the session and keep it IDENTICAL on every ' +
-            'subsequent call — the card title reflects the session, not ' +
-            'the current message.',
+            "2-4 word descriptive title derived from the user's first " +
+            "prompt, mirroring the user's writing style. Match THEIR " +
+            'casing: lowercase prompt → lowercase title; sentence case ' +
+            'prompt → sentence case title; Title Case → Title Case. ' +
+            'Always preserve proper nouns / acronyms in canonical ' +
+            'capitalization (React, OAuth, S3, IPC). Drop emphasis ' +
+            'markers (ALL CAPS, "PLEASE", exclamation points). On the ' +
+            'first turn, set this via your VERY FIRST call to ' +
+            'update_state (before any other tool use), then keep it ' +
+            'IDENTICAL on every subsequent call — the title reflects the ' +
+            'session, not the current message.',
         },
         tldr: {
           type: 'string',
           description:
             'One short speakable sentence (≤15 spoken seconds) summarizing ' +
-            "the latest outcome. Plain prose for the ear; no code, no " +
-            'markdown, no quotes. Update on every call.',
+            'the latest outcome. Plain prose for the ear; no code, no ' +
+            'markdown, no quotes. Write as a direct status line, NOT ' +
+            'third-person narration: "Running on Opus 4.7" rather than ' +
+            '"Told the user I am running Opus 4.7"; "Refactored the auth ' +
+            'flow" rather than "Helped the user refactor the auth flow". ' +
+            'The reader IS the user — there is no third party to refer ' +
+            'to. Update on every call.',
         },
         progress: {
           oneOf: [

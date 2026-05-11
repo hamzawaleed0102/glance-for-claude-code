@@ -1,14 +1,16 @@
 :root {
-  --bg: var(--vscode-sideBar-background);
+  /* Hard-coded near-black so the sidebar reads as a dedicated workspace
+   * regardless of which VS Code theme the user is on. */
+  --bg: #07090c;
   --fg: var(--vscode-foreground);
   --muted: var(--vscode-descriptionForeground);
   --accent: var(--vscode-focusBorder);
   --danger: var(--vscode-errorForeground);
   --warn: var(--vscode-editorWarning-foreground);
   --done: #4ade80;
-  --border: var(--vscode-panel-border);
-  --hover: var(--vscode-list-hoverBackground);
-  --active: var(--vscode-list-activeSelectionBackground);
+  --border: rgba(255, 255, 255, 0.08);
+  --hover: rgba(255, 255, 255, 0.04);
+  --active: rgba(99, 162, 255, 0.10);
   --active-fg: var(--vscode-list-activeSelectionForeground);
 }
 
@@ -31,23 +33,28 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .panel-header-count { color: var(--muted); margin-left: 6px; font-variant-numeric: tabular-nums; }
-.panel-actions { display: flex; gap: 6px; align-items: center; }
+.panel-actions { display: flex; gap: 8px; align-items: center; }
 .icon-btn {
   background: transparent;
   border: 1px solid transparent;
   color: var(--fg);
   cursor: pointer;
-  font-size: 18px;
+  font-size: 22px;
   line-height: 1;
-  min-width: 28px;
-  height: 28px;
+  min-width: 34px;
+  height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 6px;
-  border-radius: 4px;
+  padding: 0 8px;
+  border-radius: 6px;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
-.icon-btn:hover { border-color: var(--border); background: var(--row-hover, rgba(255, 255, 255, 0.04)); }
+.icon-btn:hover {
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--vscode-foreground);
+}
 .tree-search input {
   width: 100%;
   padding: 4px 6px;
@@ -75,6 +82,12 @@ body {
   margin-bottom: 8px;
   transition: transform 140ms ease, background 140ms ease,
     border-color 140ms ease, box-shadow 140ms ease;
+  /* Fixed height so adding/removing rows (description, progress, etc.)
+   * inside the card doesn't push siblings around. The interior content
+   * naturally flows from the top and any unused space sits at the bottom;
+   * overflow:hidden caps any unexpected runaway content. */
+  height: 86px;
+  box-sizing: border-box;
   overflow: hidden;
 }
 
@@ -114,6 +127,21 @@ body {
 .agent-card.active::before { width: 4px; }
 .agent-card.starting { opacity: 0.85; }
 
+/* Drag-and-drop visual states. */
+.agent-card.dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+.agent-card.drag-over {
+  border-color: var(--accent);
+  /* Glow + an upward arrow-like accent stripe extension to hint
+   * "drop here". The 6px wide stripe + sharp glow reads at a glance. */
+  box-shadow:
+    0 -2px 0 var(--accent),
+    0 0 0 1px rgba(99, 162, 255, 0.35);
+}
+.agent-card.drag-over::before { width: 6px; background: var(--accent); }
+
 /* Per-status accent stripe colors. */
 .agent-card.status-idle::before     { background: rgba(255, 255, 255, 0.10); }
 .agent-card.status-starting::before { background: var(--accent); animation: stripe-pulse 1.5s ease-in-out infinite; }
@@ -127,11 +155,14 @@ body {
   50%      { opacity: 0.45; }
 }
 
-/* Status badge — small chip in top-right, color-coded to status. */
+/* Status badge — small chip on the right edge, vertically centered on
+ * the card so it doesn't crowd the close button at top-right. Color-
+ * coded to status. */
 .agent-status {
   position: absolute;
-  right: 30px;
-  top: 11px;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 14px;
   height: 14px;
   display: inline-flex;
@@ -226,8 +257,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.agent-tldr.muted { color: var(--muted); cursor: pointer; }
-.agent-tldr.muted:hover { color: var(--fg); }
+.agent-tldr.muted { color: var(--muted); }
 .agent-tldr.warn { color: var(--warn); font-weight: 500; }
 .agent-tldr.danger { color: var(--danger); font-weight: 500; }
 
@@ -284,53 +314,100 @@ body {
   50%      { opacity: 1;   transform: scale(1.1); }
 }
 
-/* Kill button — top-right, fades in on hover */
+/* Kill button — top-right, fades in on hover. SVG glyph is crisper
+ * and properly sized at all DPI ratios. */
 .agent-kill {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  background: transparent;
-  border: none;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--muted);
   cursor: pointer;
-  padding: 0 5px;
-  font-size: 14px;
-  line-height: 1;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
   opacity: 0;
-  transition: opacity 100ms ease, color 100ms ease;
+  transition: opacity 120ms ease, color 120ms ease,
+    background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+.agent-kill svg {
+  width: 12px;
+  height: 12px;
+  display: block;
 }
 .agent-card:hover .agent-kill,
-.agent-card.active .agent-kill { opacity: 0.7; }
-.agent-kill:hover { color: var(--danger); opacity: 1; }
+.agent-card.active .agent-kill { opacity: 0.85; }
+.agent-kill:hover {
+  color: #ffffff;
+  background: rgba(255, 80, 80, 0.85);
+  border-color: rgba(255, 80, 80, 0.85);
+  opacity: 1;
+}
 
-/* Footer */
+/* Footer — "+ New Session" with model-picker chevron */
 .new-agent-btn {
   display: flex;
-  padding: 8px;
+  padding: 10px;
   border-top: 1px solid var(--border);
   position: relative;
-  gap: 1px;
+  gap: 0;
+}
+.new-agent-btn-main,
+.new-agent-btn-chevron {
+  background: linear-gradient(180deg, #2a6cf0 0%, #1b54c8 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  cursor: pointer;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: background 140ms ease, transform 80ms ease,
+    box-shadow 140ms ease, border-color 140ms ease;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.10) inset,
+    0 4px 12px rgba(20, 60, 180, 0.35);
 }
 .new-agent-btn-main {
   flex: 1;
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-  border: none;
-  padding: 6px;
-  cursor: pointer;
-  border-radius: 3px 0 0 3px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  border-right: none;
+  border-radius: 6px 0 0 6px;
 }
-.new-agent-btn-main:hover { background: var(--vscode-button-hoverBackground); }
 .new-agent-btn-chevron {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-  border: none;
-  border-left: 1px solid rgba(255, 255, 255, 0.15);
-  padding: 0 10px;
-  cursor: pointer;
-  border-radius: 0 3px 3px 0;
+  width: 30px;
+  padding: 0;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-left: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 0 6px 6px 0;
 }
-.new-agent-btn-chevron:hover { background: var(--vscode-button-hoverBackground); }
+.new-agent-btn-chevron .chev {
+  /* SVG chevron — crisper than the unicode glyph and styleable. */
+  width: 11px;
+  height: 11px;
+  display: inline-block;
+  transition: transform 160ms ease;
+}
+.new-agent-btn-main:hover,
+.new-agent-btn-chevron:hover {
+  background: linear-gradient(180deg, #3a7cff 0%, #2562d6 100%);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.new-agent-btn-main:active,
+.new-agent-btn-chevron:active {
+  transform: translateY(1px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.10) inset,
+    0 2px 6px rgba(20, 60, 180, 0.25);
+}
+.new-agent-btn-chevron.open .chev { transform: rotate(180deg); }
 .model-picker {
   position: absolute;
   bottom: 100%;

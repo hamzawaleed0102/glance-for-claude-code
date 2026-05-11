@@ -431,6 +431,28 @@ export class AgentManager implements vscode.Disposable {
     this.agents.get(id)?.setManualTitle('');
   }
 
+  /**
+   * Rebuild the internal agents Map in the order supplied by the
+   * webview after a drag-drop. Map preserves insertion order, so
+   * subsequent `list()` / `persist()` calls naturally follow the new
+   * sequence. Any agents missing from the input list are appended at
+   * the end (defensive — shouldn't happen in practice since the webview
+   * sends the full ordering).
+   */
+  reorder(ids: string[]): void {
+    const entries: [string, Agent][] = [];
+    for (const id of ids) {
+      const a = this.agents.get(id);
+      if (a) entries.push([id, a]);
+    }
+    for (const [id, a] of this.agents) {
+      if (!entries.some(([eid]) => eid === id)) entries.push([id, a]);
+    }
+    this.agents.clear();
+    for (const [id, a] of entries) this.agents.set(id, a);
+    this.persist();
+  }
+
   private setActive(id: string | null): void {
     if (this.activeId === id) return;
     this.activeId = id;
@@ -505,16 +527,24 @@ export class AgentManager implements vscode.Disposable {
       // the provider can chime + show a VS Code notification.
       agent.notifyTurnComplete();
     } else if (hookEvent === 'Notification') {
-      // Notification hook fires when Claude (or one of its slash commands)
-      // is awaiting user input — e.g. an interactive picker in /feedback,
-      // a tool-permission prompt, or a 60s idle timeout. The MCP
-      // update_state path doesn't cover these cases because Claude isn't
-      // generating a turn at that moment. The hook payload's `message`
-      // describes what's being awaited; we surface that as the attention
-      // marker on the card and re-use the turnComplete path for the toast.
+      // Notification hook fires for two distinct cases:
+      //   1. Real attention required — tool-permission prompts, slash-
+      //      command interactive pickers (e.g. /feedback). These come
+      //      with a specific message describing what's being awaited.
+      //   2. Claude Code's 60s idle timeout — fires automatically with
+      //      the generic "Claude is waiting for your input" message,
+      //      even after a clean turn ended. This is informational only,
+      //      not a real attention request.
+      // We surface (1) on the card but ignore (2) — otherwise every
+      // finished agent flips from green ✓ to yellow attention after a
+      // minute of user idle time, which is wrong.
       const payload = wrapper.payload as { message?: string } | undefined;
-      const message =
-        typeof payload?.message === 'string' ? payload.message : 'Waiting for input';
+      const raw = typeof payload?.message === 'string' ? payload.message.trim() : '';
+      if (/claude is waiting for your input/i.test(raw)) {
+        console.log('[glancer] Notification: skipping idle-timeout ping');
+        return;
+      }
+      const message = raw || 'Waiting for input';
       agent.setNeedsAttention(message);
     }
   }

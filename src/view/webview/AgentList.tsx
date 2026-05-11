@@ -21,11 +21,37 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
   const [filter, setFilter] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  // Local optimistic copy of the agent order. We update this immediately
+  // on drop for a snappy UX; the host then re-persists. Falls back to
+  // the prop-supplied order whenever the prop length/contents change
+  // (agents added/removed).
+  const [localOrder, setLocalOrder] = useState<string[] | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Drop the local order if it ever diverges from the actual agent set
+  // (e.g. an agent was added or removed). The host's order is canonical
+  // after that point.
+  useEffect(() => {
+    if (!localOrder) return;
+    const propsIds = new Set(agents.map((a) => a.id));
+    const localIds = new Set(localOrder);
+    if (propsIds.size !== localIds.size) { setLocalOrder(null); return; }
+    for (const id of propsIds) if (!localIds.has(id)) { setLocalOrder(null); return; }
+  }, [agents, localOrder]);
+
+  // Apply the local order if active; otherwise use the props' order.
+  const orderedAgents = localOrder
+    ? localOrder
+        .map((id) => agents.find((a) => a.id === id))
+        .filter((a): a is AgentSnapshot => !!a)
+    : agents;
+
   const lc = filter.toLowerCase();
   const filtered = filter
-    ? agents.filter((a) => a.name.toLowerCase().includes(lc) || a.id.toLowerCase().includes(lc))
-    : agents;
+    ? orderedAgents.filter((a) => a.name.toLowerCase().includes(lc) || a.id.toLowerCase().includes(lc))
+    : orderedAgents;
 
   useEffect(() => {
     const onFocus = () => {
@@ -75,6 +101,47 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
       e.preventDefault();
       onKill(activeId);
     }
+  };
+
+  // ---- Drag-and-drop reordering ----
+  const onCardDragStart = (id: string) => (e: React.DragEvent) => {
+    e.dataTransfer.effectAllowed = 'move';
+    // setData is required for Firefox compatibility even if we don't use it.
+    e.dataTransfer.setData('text/plain', id);
+    setDraggingId(id);
+  };
+  const onCardDragOver = (id: string) => (e: React.DragEvent) => {
+    if (!draggingId || draggingId === id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverId !== id) setDragOverId(id);
+  };
+  const onCardDragLeave = () => {
+    // Don't clear dragOverId here — dragLeave fires when crossing into
+    // nested children too, causing flicker. The next dragOver will fix it.
+  };
+  const onCardDrop = (targetId: string) => (e: React.DragEvent) => {
+    e.preventDefault();
+    const sourceId = draggingId ?? e.dataTransfer.getData('text/plain');
+    setDraggingId(null);
+    setDragOverId(null);
+    if (!sourceId || sourceId === targetId) return;
+    // Compute new order. Drop position: insert source at target's index
+    // (pushing target and subsequent items down).
+    const currentIds = orderedAgents.map((a) => a.id);
+    const sourceIdx = currentIds.indexOf(sourceId);
+    const targetIdx = currentIds.indexOf(targetId);
+    if (sourceIdx < 0 || targetIdx < 0) return;
+    currentIds.splice(sourceIdx, 1);
+    // After removal, target index shifts if source was before it.
+    const adjusted = sourceIdx < targetIdx ? targetIdx - 1 : targetIdx;
+    currentIds.splice(adjusted, 0, sourceId);
+    setLocalOrder(currentIds);
+    postToHost({ type: 'reorder', ids: currentIds });
+  };
+  const onCardDragEnd = () => {
+    setDraggingId(null);
+    setDragOverId(null);
   };
 
   // After any mouse interaction inside the panel, snap focus back to the
@@ -132,6 +199,13 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
             active={a.id === activeId}
             onSelect={() => onSelect(a.id)}
             onKill={() => onKill(a.id)}
+            dragging={draggingId === a.id}
+            dragOver={dragOverId === a.id && draggingId !== null && draggingId !== a.id}
+            onDragStart={onCardDragStart(a.id)}
+            onDragOver={onCardDragOver(a.id)}
+            onDragLeave={onCardDragLeave}
+            onDrop={onCardDrop(a.id)}
+            onDragEnd={onCardDragEnd}
           />
         ))}
       </div>
@@ -143,11 +217,24 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
           + New Session
         </button>
         <button
-          className="new-agent-btn-chevron"
+          className={`new-agent-btn-chevron${pickerOpen ? ' open' : ''}`}
           onClick={() => setPickerOpen((p) => !p)}
           title="Pick model"
+          aria-label="Pick model"
+          aria-expanded={pickerOpen}
         >
-          ⌄
+          <svg
+            className="chev"
+            viewBox="0 0 12 12"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="3 7.5 6 4.5 9 7.5" />
+          </svg>
         </button>
         {pickerOpen && (
           <div className="model-picker">

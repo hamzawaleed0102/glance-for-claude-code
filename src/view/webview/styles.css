@@ -75,7 +75,7 @@ body {
   gap: 6px;
   padding: 12px 30px 14px 20px;
   border: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.08));
-  border-radius: 12px;
+  border-radius: 0;
   background: linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.025) 0%,

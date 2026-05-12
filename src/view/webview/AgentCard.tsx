@@ -173,30 +173,42 @@ export function AgentCard({
         </div>
       ) : (
         <>
-          {description && (
-            <div
-              className={`agent-card-sub agent-tldr ${descriptionTone}`}
-              title={description}
-            >
-              {description}
-            </div>
-          )}
-          {agent.progress && status === 'streaming' && (
-            // Only render while actively streaming. Once the turn ends
-            // (status flips to 'done'), the green ✓ on the left rail tells
-            // the user we're finished — the bar becomes redundant. It
-            // reappears on the next UserPromptSubmit when streaming flips
-            // back on.
-            <div className="agent-progress-row">
-              <div className="agent-progress-track">
+          <div className="reveal" data-open={description ? 'true' : 'false'}>
+            <div className="reveal-inner">
+              {description && (
                 <div
-                  className="agent-progress-fill"
-                  style={{ width: `${Math.round(agent.progress.value * 100)}%` }}
-                />
-              </div>
-              <div className="agent-progress-label">{agent.progress.label}</div>
+                  className={`agent-card-sub agent-tldr ${descriptionTone}`}
+                  title={description}
+                >
+                  {description}
+                </div>
+              )}
             </div>
-          )}
+          </div>
+
+          <div
+            className="reveal"
+            data-open={agent.progress && status === 'streaming' ? 'true' : 'false'}
+          >
+            <div className="reveal-inner">
+              {agent.progress && status === 'streaming' && (
+                // Only render while actively streaming. Once the turn ends
+                // (status flips to 'done'), the green ✓ on the left rail
+                // tells the user we're finished — the bar becomes
+                // redundant. It reappears on the next UserPromptSubmit
+                // when streaming flips back on.
+                <div className="agent-progress-row">
+                  <div className="agent-progress-track">
+                    <div
+                      className="agent-progress-fill"
+                      style={{ width: `${Math.round(agent.progress.value * 100)}%` }}
+                    />
+                  </div>
+                  <div className="agent-progress-label">{agent.progress.label}</div>
+                </div>
+              )}
+            </div>
+          </div>
         </>
       )}
 

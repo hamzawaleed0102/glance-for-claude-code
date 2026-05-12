@@ -122,6 +122,37 @@ test('skips records whose content is wrapped in <local-command-caveat>', async (
   assert.equal(result[0].firstPrompt, 'the real prompt');
 });
 
+test('skips slash-command tag echoes (<command-name>, <command-message>, etc.)', async () => {
+  const tmp = mkTmpProjectDir();
+  const dir = setupProjectDir(tmp, '/cwd2b');
+  // Realistic shape of records Claude Code emits when the user invokes
+  // `/clear` from the TUI: a caveat + a tag-wrapped echo + the real
+  // follow-up prompt. The scanner should walk past the first two and
+  // surface the third.
+  writeJsonl(dir, 'sess-Bx', [
+    {
+      type: 'user',
+      isMeta: true,
+      message: { content: '<local-command-caveat>...</local-command-caveat>' },
+    },
+    {
+      type: 'user',
+      isMeta: false,
+      message: {
+        content:
+          '<command-name>/clear</command-name>\n<command-message>clear</command-message>\n<command-args></command-args>',
+      },
+    },
+    {
+      type: 'user',
+      isMeta: false,
+      message: { content: 'add a dropdown for old sessions' },
+    },
+  ]);
+  const result = await listOldSessions('/cwd2b', new Set());
+  assert.equal(result[0].firstPrompt, 'add a dropdown for old sessions');
+});
+
 test('skips records whose message.content is an array (tool-use payload)', async () => {
   const tmp = mkTmpProjectDir();
   const dir = setupProjectDir(tmp, '/cwd3');

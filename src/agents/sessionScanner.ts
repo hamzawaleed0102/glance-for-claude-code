@@ -127,6 +127,21 @@ function readFirstUserPrompt(filePath: string): Promise<string | null> {
   });
 }
 
+/**
+ * Tag prefixes that Claude Code injects into user records when the user
+ * invokes a slash command (or its harness emits a caveat). They are not
+ * user-authored prompts — surfacing them in the picker shows noise like
+ * "<command-name>/clear</command-name>" instead of the real first ask
+ * that usually follows in the next record.
+ */
+const SLASH_COMMAND_TAG_PREFIXES = [
+  '<local-command-caveat>',
+  '<local-command-stdout>',
+  '<command-name>',
+  '<command-message>',
+  '<command-args>',
+];
+
 function extractPrompt(record: unknown): string | null {
   if (typeof record !== 'object' || record === null) return null;
   const r = record as {
@@ -140,6 +155,8 @@ function extractPrompt(record: unknown): string | null {
   if (typeof content !== 'string') return null;
   const trimmed = content.trim();
   if (!trimmed) return null;
-  if (trimmed.startsWith('<local-command-caveat>')) return null;
+  for (const prefix of SLASH_COMMAND_TAG_PREFIXES) {
+    if (trimmed.startsWith(prefix)) return null;
+  }
   return trimmed.slice(0, MAX_PROMPT_CHARS);
 }

@@ -37,7 +37,7 @@
   "scripts": {
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
-    "test": "node --test out/extractMarkers.test.js out/transcriptWatcher.test.js",
+    "test": "node --test out/markers/extractMarkers.test.js out/markers/transcriptWatcher.test.js out/agents/sessionScanner.test.js",
     "fix-pty": "node scripts/fix-pty-perms.mjs",
     "postinstall": "node scripts/fix-pty-perms.mjs",
     "vscode:prepublish": "pnpm run build"

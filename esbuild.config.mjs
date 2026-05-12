@@ -36,11 +36,14 @@ const testEntries = [
   'src/markers/extractMarkers.test.ts',
   'src/markers/transcriptWatcher.ts',
   'src/markers/transcriptWatcher.test.ts',
+  'src/agents/sessionScanner.ts',
+  'src/agents/sessionScanner.test.ts',
 ];
 const testConfig = {
   entryPoints: testEntries,
   bundle: false,
   outdir: 'out',
+  outbase: 'src',
   platform: 'node',
   format: 'cjs',
   target: 'node18',

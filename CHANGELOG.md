@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.6 — 2026-05-12
+
+- Polish: slightly round the Marketplace icon corners (rx=24) so the listing tile reads as an app icon, not a flat poster.
+
 ## 0.0.5 — 2026-05-12
 
 - Polish: auto-assigned agent names now read `glance-XX` (matches the product) instead of the legacy `glancer-XX`. Existing renamed cards keep their saved name.

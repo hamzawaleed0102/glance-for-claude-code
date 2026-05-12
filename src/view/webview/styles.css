@@ -331,26 +331,26 @@ body {
   50%      { opacity: 1;   transform: scale(1.1); }
 }
 
-/* Kill button — top-right, fades in on hover. SVG glyph is crisper
- * and properly sized at all DPI ratios. */
+/* Kill button — bare X glyph anchored top-right. No background or
+ * border chrome; fades in on hover or when the card is active, and
+ * shifts to a red icon color on direct hover. */
 .agent-kill {
   position: absolute;
   top: 6px;
-  right: 6px;
-  width: 22px;
-  height: 22px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  right: 8px;
+  width: 18px;
+  height: 18px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
   color: var(--muted);
   cursor: pointer;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
   opacity: 0;
-  transition: opacity 120ms ease, color 120ms ease,
-    background 120ms ease, border-color 120ms ease, transform 120ms ease;
+  transition: opacity 120ms ease, color 120ms ease;
 }
 .agent-kill svg {
   width: 12px;
@@ -360,9 +360,7 @@ body {
 .agent-card:hover .agent-kill,
 .agent-card.active .agent-kill { opacity: 0.85; }
 .agent-kill:hover {
-  color: #ffffff;
-  background: rgba(255, 80, 80, 0.85);
-  border-color: rgba(255, 80, 80, 0.85);
+  color: #ff6b6b;
   opacity: 1;
 }
 

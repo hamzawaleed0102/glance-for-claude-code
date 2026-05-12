@@ -248,6 +248,36 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
       case 'reorder':
         this.manager.reorder(m.ids);
         break;
+      case 'listOldSessions': {
+        const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!cwd) {
+          this.view?.webview.postMessage({
+            type: 'oldSessions',
+            sessions: [],
+          } satisfies HostToWebview);
+          return;
+        }
+        this.manager.listOldSessions(cwd).then((sessions) => {
+          this.view?.webview.postMessage({
+            type: 'oldSessions',
+            sessions,
+          } satisfies HostToWebview);
+        });
+        break;
+      }
+      case 'openOldSession': {
+        const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!cwd) {
+          vscode.window.showWarningMessage('Open a workspace folder first.');
+          return;
+        }
+        const id = this.manager.openOldSession({ cwd, sessionId: m.sessionId });
+        // Reuse the same focus-race protection as `newAgent` — VS Code
+        // launch is busy for a few hundred ms after the PTY attaches.
+        this.pendingFocusTerminalId = id;
+        this.scheduleFocusRetries(id);
+        break;
+      }
     }
   }
 

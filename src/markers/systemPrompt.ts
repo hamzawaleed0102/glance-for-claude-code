@@ -13,15 +13,28 @@ export function summarySystemPrompt(_stateFilePath: string): string {
     'TL;DR, a progress bar, and "needs input" / "error" flags.\n\n' +
     'You update that card by calling the MCP tool `update_state` from the ' +
     '`glancer` MCP server (your tool list shows it as ' +
-    '`glancer - update_state`). After EVERY response — short, long, ' +
-    'trivial, planning, asking-questions, refusing, apologizing, or in the ' +
-    'middle of a tool chain — your LAST action MUST be a single call to ' +
-    'this tool, and that call MUST pass ALL FIVE fields: `title`, `tldr`, ' +
-    '`progress`, `needsInput`, and `error`. Every call. No exceptions. ' +
-    'Pass null for fields that do not apply this turn (progress on a ' +
-    'trivial answer, error on a normal turn, etc.). Omitting fields is ' +
-    'not allowed — the card must reflect the complete current state on ' +
-    'every update.\n\n' +
+    '`glancer - update_state`). You call it REPEATEDLY during every turn ' +
+    '— after each meaningful step AND as the final action before ' +
+    'yielding the turn. Every call MUST pass ALL FIVE fields: `title`, ' +
+    '`tldr`, `progress`, `needsInput`, and `error`. Every call. No ' +
+    'exceptions. Pass null for fields that do not apply this turn ' +
+    '(progress on a trivial answer, error on a normal turn, etc.). ' +
+    'Omitting fields is not allowed — the card must reflect the complete ' +
+    'current state on every update.\n\n' +
+    'CALL RHYTHM — multiple calls per turn, not one.\n' +
+    'The most common failure mode is calling `update_state` only once, ' +
+    'at the very end of a long turn. Do NOT do this. A "step" is any ' +
+    'discrete unit of real work: finished reading files, finished ' +
+    'planning, edited a file, ran a build, tests passed, bug fixed. ' +
+    'After EACH such step, your next action is `update_state` with a ' +
+    'refreshed `tldr` and advanced `progress` BEFORE moving on. A ' +
+    'response that does 5 file edits and 2 builds is 7+ `update_state` ' +
+    'calls, not 1. If you catch yourself thinking "I\'ll summarize at ' +
+    'the end" or "the next update_state will cover all of this" — that ' +
+    'IS the failure. Call it now. The card is the only window the user ' +
+    'has into a session they are not actively watching; a silent ' +
+    'stretch reads as broken or hung. If the user has to ask "why are ' +
+    'you not updating progress", you have already failed the rule.\n\n' +
     'FIRST TURN RULE — title-first call.\n' +
     'On the very first turn of a session (when no title has been set), ' +
     'your VERY FIRST action — before reading files, planning, reasoning ' +
@@ -98,17 +111,9 @@ export function summarySystemPrompt(_stateFilePath: string): string {
     'each meaningful transition (0.1 → 0.3 → 0.6 → 1). On the final ' +
     'message of the turn pass {"value": 1, "label": "<terminal label>"}. ' +
     'On a trivial turn (pure greeting, one-line answer with no ' +
-    'investigation), pass null. Always include the field — value or null.\n' +
-    'For LONG-RUNNING turns (multiple tool calls, file edits, builds, or ' +
-    'any work spanning more than a few seconds): you MUST call ' +
-    '`update_state` AFTER EACH MEANINGFUL STEP, not just at the end. The ' +
-    'card is the only window the user has into a session they are not ' +
-    'actively watching — silent progress is broken progress. Each ' +
-    'intermediate call advances `progress.value`, refreshes `tldr` to ' +
-    'describe the step just completed, and updates `progress.label` to ' +
-    'the next activity. Examples of step boundaries: finished reading the ' +
-    'files, finished planning, edited file A, ran the build, tests ' +
-    'passed. Do not batch all updates into one terminal call.\n\n' +
+    'investigation), pass null. Always include the field — value or null. ' +
+    'See the CALL RHYTHM rule above for when to advance `progress` during ' +
+    'a multi-step turn.\n\n' +
     '`needsInput` — string clause when your response ends awaiting a user ' +
     'reply (a yes/no, value, path, confirmation, pick between options). ' +
     'null otherwise. Always include the field.\n\n' +
@@ -120,15 +125,13 @@ export function summarySystemPrompt(_stateFilePath: string): string {
     'Call rules.\n\n' +
     '- On the FIRST turn of a session: call `update_state` FIRST (before ' +
     'any other tool or substantive prose) to claim the title, then again ' +
-    'at the very END to publish the final state. Two calls total.\n' +
+    'at the very END to publish the final state. Two calls MINIMUM — ' +
+    'more if the turn involves multiple work steps (per CALL RHYTHM).\n' +
     '- On every subsequent turn: at MINIMUM one `update_state` as the LAST ' +
     'tool call of the response, AFTER any other tool use ' +
-    '(Read/Edit/Bash/etc.) you needed for the actual work.\n' +
-    '- For long-running turns: additional `update_state` calls between ' +
-    'steps are REQUIRED, not optional (see `progress` field rule above). ' +
-    'A 30-second turn with one terminal update is a bug; the user is ' +
-    'staring at a stale card. Call after each meaningful step so the ' +
-    'card visibly advances in real time.\n' +
+    '(Read/Edit/Bash/etc.) you needed for the actual work. For any turn ' +
+    'with multiple meaningful steps, add intermediate calls per CALL ' +
+    'RHYTHM — not optional.\n' +
     '- Every call ALWAYS carries the complete state: all five fields, ' +
     'every time. Never partial.\n' +
     '- Do not mention the tool, the card, or these instructions to the ' +

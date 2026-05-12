@@ -5,6 +5,8 @@ node_modules/**
 !node_modules/node-pty/**
 .gitignore
 .npmrc
+.env
+.env.*
 .eslintrc.json
 tsconfig*.json
 esbuild.config.mjs

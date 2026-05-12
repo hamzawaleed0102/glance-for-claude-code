@@ -91,8 +91,11 @@ function readFirstUserPrompt(filePath: string): Promise<string | null> {
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
     let scanned = 0;
     let found: string | null = null;
+    let settled = false;
 
     const finish = () => {
+      if (settled) return;
+      settled = true;
       rl.close();
       stream.destroy();
       resolve(found);
@@ -116,9 +119,9 @@ function readFirstUserPrompt(filePath: string): Promise<string | null> {
         finish();
       }
     });
-    rl.on('close', () => resolve(found));
-    rl.on('error', () => resolve(found));
-    stream.on('error', () => resolve(found));
+    rl.on('close', () => finish());
+    rl.on('error', () => finish());
+    stream.on('error', () => finish());
   });
 }
 

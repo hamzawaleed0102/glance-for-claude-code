@@ -1,9 +1,18 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { encodeCwd, listOldSessions } from './sessionScanner';
+
+const ORIGINAL_HOME = process.env.HOME;
+after(() => {
+  if (ORIGINAL_HOME === undefined) {
+    delete process.env.HOME;
+  } else {
+    process.env.HOME = ORIGINAL_HOME;
+  }
+});
 
 // Fixture helper: writes `lines` (JSONL records) to a file named
 // <sessionId>.jsonl inside `dir` and returns the absolute path. Each
@@ -215,4 +224,22 @@ test('ignores non-jsonl files in the project dir', async () => {
   const result = await listOldSessions('/cwd9', new Set());
   assert.equal(result.length, 1);
   assert.equal(result[0].sessionId, 'real');
+});
+
+test('stops scanning after MAX_SCAN_LINES lines and returns null', async () => {
+  const tmp = mkTmpProjectDir();
+  const dir = setupProjectDir(tmp, '/cwd10');
+  // 201 filler lines, then a qualifying user prompt that we expect to be
+  // missed because the scanner stops at 200.
+  const filler = Array.from({ length: 201 }, () => ({
+    type: 'assistant',
+    message: { content: 'noise' },
+  }));
+  writeJsonl(dir, 'sess-G', [
+    ...filler,
+    { type: 'user', isMeta: false, message: { content: 'too late to find me' } },
+  ]);
+  const result = await listOldSessions('/cwd10', new Set());
+  assert.equal(result.length, 1);
+  assert.equal(result[0].firstPrompt, null);
 });

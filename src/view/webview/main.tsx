@@ -1,7 +1,8 @@
 import { createRoot } from 'react-dom/client';
 import { useEffect, useState } from 'react';
-import type { AgentSnapshot, HostToWebview } from '../../shared/messages';
+import type { AgentSnapshot, HostToWebview, OldSession } from '../../shared/messages';
 import { AgentList } from './AgentList';
+import { OldSessionsPicker } from './OldSessionsPicker';
 import { listenFromHost, postToHost } from './api';
 
 // Lazily-created shared AudioContext — re-used across tones so we don't
@@ -35,6 +36,7 @@ function playAttentionTone() {
 function App() {
   const [agents, setAgents] = useState<AgentSnapshot[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [oldSessions, setOldSessions] = useState<OldSession[] | null>(null);
 
   // Dispatch `glancer:focus` whenever the webview iframe gains focus. VS
   // Code's built-in `glancer.agents.focus` command routes focus to the
@@ -89,6 +91,9 @@ function App() {
           // Up/Down/Enter/G are handled by the React keydown handler.
           window.dispatchEvent(new Event('glancer:focus'));
           break;
+        case 'oldSessions':
+          setOldSessions(m.sessions);
+          break;
         case 'playTone':
           playAttentionTone();
           break;
@@ -99,12 +104,24 @@ function App() {
   }, []);
 
   return (
-    <AgentList
-      agents={agents}
-      activeId={activeId}
-      onSelect={(id) => postToHost({ type: 'select', id })}
-      onKill={(id) => postToHost({ type: 'kill', id })}
-    />
+    <>
+      <OldSessionsPicker
+        sessions={oldSessions}
+        onOpen={() => {
+          // Wipe the previous list so the loading row shows while the
+          // host scans — guarantees stale results from an earlier open
+          // never flash on screen.
+          setOldSessions(null);
+          postToHost({ type: 'listOldSessions' });
+        }}
+      />
+      <AgentList
+        agents={agents}
+        activeId={activeId}
+        onSelect={(id) => postToHost({ type: 'select', id })}
+        onKill={(id) => postToHost({ type: 'kill', id })}
+      />
+    </>
   );
 }
 

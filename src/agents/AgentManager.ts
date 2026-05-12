@@ -5,8 +5,8 @@ import chokidar, { type FSWatcher } from 'chokidar';
 import { Agent } from './Agent';
 import { nextAgentId } from './ids';
 import { summarySystemPrompt } from '../markers/systemPrompt';
-import type { AgentSnapshot, ClaudeModel } from '../shared/messages';
-import { listOldSessions as scanOldSessions, type OldSession } from './sessionScanner';
+import type { AgentSnapshot, ClaudeModel, OldSession } from '../shared/messages';
+import { listOldSessions as scanOldSessions } from './sessionScanner';
 
 interface ManagerInit {
   context: vscode.ExtensionContext;
@@ -378,6 +378,10 @@ export class AgentManager implements vscode.Disposable {
     const agent = this.makeAgent({
       id,
       cwd: opts.cwd,
+      // Picker UX doesn't surface a model choice — model picking lives
+      // on `newAgent`'s split button. Reopened sessions start fresh with
+      // the default, matching the rest of the "reopened sessions start
+      // clean" design (see the design spec's "Title source" section).
       model: 'default',
       sessionId: opts.sessionId,
       hasUserPrompt: true,

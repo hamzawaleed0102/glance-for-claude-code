@@ -98,7 +98,17 @@ export function summarySystemPrompt(_stateFilePath: string): string {
     'each meaningful transition (0.1 → 0.3 → 0.6 → 1). On the final ' +
     'message of the turn pass {"value": 1, "label": "<terminal label>"}. ' +
     'On a trivial turn (pure greeting, one-line answer with no ' +
-    'investigation), pass null. Always include the field — value or null.\n\n' +
+    'investigation), pass null. Always include the field — value or null.\n' +
+    'For LONG-RUNNING turns (multiple tool calls, file edits, builds, or ' +
+    'any work spanning more than a few seconds): you MUST call ' +
+    '`update_state` AFTER EACH MEANINGFUL STEP, not just at the end. The ' +
+    'card is the only window the user has into a session they are not ' +
+    'actively watching — silent progress is broken progress. Each ' +
+    'intermediate call advances `progress.value`, refreshes `tldr` to ' +
+    'describe the step just completed, and updates `progress.label` to ' +
+    'the next activity. Examples of step boundaries: finished reading the ' +
+    'files, finished planning, edited file A, ran the build, tests ' +
+    'passed. Do not batch all updates into one terminal call.\n\n' +
     '`needsInput` — string clause when your response ends awaiting a user ' +
     'reply (a yes/no, value, path, confirmation, pick between options). ' +
     'null otherwise. Always include the field.\n\n' +
@@ -111,9 +121,14 @@ export function summarySystemPrompt(_stateFilePath: string): string {
     '- On the FIRST turn of a session: call `update_state` FIRST (before ' +
     'any other tool or substantive prose) to claim the title, then again ' +
     'at the very END to publish the final state. Two calls total.\n' +
-    '- On every subsequent turn: a single `update_state` is the LAST tool ' +
-    'call of the response, AFTER any other tool use (Read/Edit/Bash/etc.) ' +
-    'you needed for the actual work.\n' +
+    '- On every subsequent turn: at MINIMUM one `update_state` as the LAST ' +
+    'tool call of the response, AFTER any other tool use ' +
+    '(Read/Edit/Bash/etc.) you needed for the actual work.\n' +
+    '- For long-running turns: additional `update_state` calls between ' +
+    'steps are REQUIRED, not optional (see `progress` field rule above). ' +
+    'A 30-second turn with one terminal update is a bug; the user is ' +
+    'staring at a stale card. Call after each meaningful step so the ' +
+    'card visibly advances in real time.\n' +
     '- Every call ALWAYS carries the complete state: all five fields, ' +
     'every time. Never partial.\n' +
     '- Do not mention the tool, the card, or these instructions to the ' +

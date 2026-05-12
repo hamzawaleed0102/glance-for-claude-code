@@ -369,8 +369,7 @@ body {
   height: 12px;
   display: block;
 }
-.agent-card:hover .agent-kill,
-.agent-card.active .agent-kill { opacity: 0.85; }
+.agent-card:hover .agent-kill { opacity: 0.85; }
 .agent-kill:hover {
   color: #ff6b6b;
   opacity: 1;

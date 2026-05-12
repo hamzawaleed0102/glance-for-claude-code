@@ -21,6 +21,20 @@ export interface AgentSnapshot {
   starting: boolean;
 }
 
+/**
+ * One past Claude Code session for the current workspace, as surfaced by
+ * the "Open old session" picker. Synthesized host-side from
+ * ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl — Claude doesn't
+ * store an explicit title, so `firstPrompt` is the first usable user
+ * message text (truncated to 200 chars). `null` means no usable prompt
+ * was found; the UI renders that as "untitled session".
+ */
+export interface OldSession {
+  sessionId: string;
+  firstPrompt: string | null;
+  mtimeMs: number;
+}
+
 export type HostToWebview =
   | { type: 'state'; agents: AgentSnapshot[]; activeId: string | null }
   | { type: 'agentAdded'; agent: AgentSnapshot }
@@ -38,7 +52,13 @@ export type HostToWebview =
    * Play a tiny attention tone in the webview. Fires alongside the
    * turn-complete toast notification so the user hears + sees the alert.
    */
-  | { type: 'playTone' };
+  | { type: 'playTone' }
+  /**
+   * Reply to `listOldSessions`. Always fired even if the list is empty
+   * (e.g. no past sessions for this workspace) so the picker can flip
+   * out of its loading state.
+   */
+  | { type: 'oldSessions'; sessions: OldSession[] };
 
 export type WebviewToHost =
   | { type: 'ready' }
@@ -64,4 +84,15 @@ export type WebviewToHost =
    * persist for next launch). The webview applies the reorder
    * optimistically; the host treats this message as authoritative.
    */
-  | { type: 'reorder'; ids: string[] };
+  | { type: 'reorder'; ids: string[] }
+  /**
+   * User opened the old-sessions picker. Host scans the workspace's
+   * Claude project dir and replies with `oldSessions`. Fetched every
+   * open — no client-side cache — so freshly-finished sessions show up.
+   */
+  | { type: 'listOldSessions' }
+  /**
+   * User picked a session in the picker. Host spawns a new agent card
+   * with `claude --resume <sessionId>` using the same cwd as `newAgent`.
+   */
+  | { type: 'openOldSession'; sessionId: string };

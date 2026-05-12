@@ -134,7 +134,6 @@ export function watchTranscript(
   let discoveryTimer: NodeJS.Timeout | null = null;
 
   const attach = (filePath: string) => {
-    console.log(`[glancer] transcriptWatcher: attaching to ${filePath}`);
     watcher = chokidar.watch(filePath, {
       persistent: true,
       usePolling: true,
@@ -144,7 +143,6 @@ export function watchTranscript(
       try {
         const raw = fs.readFileSync(filePath, 'utf8');
         const text = lastAssistantText(raw);
-        console.log(`[glancer] transcriptWatcher: ${label} text-len=${text.length}`);
         onText(text);
       } catch (err) {
         console.warn('[glancer] transcriptWatcher: read failed', err);
@@ -163,7 +161,6 @@ export function watchTranscript(
       attach(p);
       return;
     }
-    console.log(`[glancer] transcriptWatcher: no file yet for session ${sessionId}, retrying`);
     if (Date.now() >= discoveryDeadline) {
       console.warn(`[glancer] transcriptWatcher: gave up looking for session ${sessionId}`);
       return;

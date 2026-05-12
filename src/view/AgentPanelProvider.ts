@@ -67,7 +67,6 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
           this.updateBadge();
           return;
       }
-      console.log('[glancer] postMessage →', msg);
       this.view.webview.postMessage(msg);
     });
   }
@@ -95,7 +94,6 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
   private updateBadge(): void {
     if (!this.view) return;
     const total = this.manager.unreadCount();
-    console.log('[glancer] badge update → total =', total);
     this.view.badge = total > 0
       ? {
           value: total,

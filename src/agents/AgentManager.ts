@@ -160,11 +160,7 @@ export class AgentManager implements vscode.Disposable {
       interval: 200,
     });
     this.eventsWatcher.on('add', (filePath: string) => {
-      console.log('[glancer] events watcher: add', filePath);
       this.handleHookEvent(filePath);
-    });
-    this.eventsWatcher.on('ready', () => {
-      console.log('[glancer] events watcher ready, dir=', this.eventsDir);
     });
     this.eventsWatcher.on('error', (err) => {
       console.error('[glancer] events watcher error', err);
@@ -191,14 +187,11 @@ export class AgentManager implements vscode.Disposable {
    * calls reveal() → revive() and starts claude with `--resume <id>`).
    */
   private restorePersistedAgents(): void {
-    console.log('[glancer] restorePersistedAgents: reading', this.sessionsFile);
     let raw: string;
     try {
       raw = fs.readFileSync(this.sessionsFile, 'utf8');
-    } catch (err) {
-      console.log(
-        `[glancer] restorePersistedAgents: no sessions file (err=${err instanceof Error ? err.message : err})`,
-      );
+    } catch {
+      // No sessions file yet — fresh install or first run in this workspace.
       return;
     }
     let entries: unknown;
@@ -212,7 +205,6 @@ export class AgentManager implements vscode.Disposable {
       console.warn('[glancer] restorePersistedAgents: file is not an array, ignoring');
       return;
     }
-    console.log(`[glancer] restorePersistedAgents: found ${entries.length} entries`);
     for (const e of entries as Array<{
       id: string;
       cwd: string;
@@ -245,9 +237,7 @@ export class AgentManager implements vscode.Disposable {
         hasUserPrompt: e.hasUserPrompt ?? true,
       });
       this.agents.set(e.id, agent);
-      console.log(`[glancer] restored dormant ${e.id} name="${e.name}" sessionId=${e.sessionId ?? 'null'}`);
     }
-    console.log(`[glancer] restorePersistedAgents: created ${this.agents.size} dormant agent(s)`);
     // Dormant agents' stateWatchers fire applyState asynchronously as
     // chokidar's polling kicks in. The change listener will re-emit on
     // each of those, but we also publish a one-shot snapshot here so
@@ -282,11 +272,6 @@ export class AgentManager implements vscode.Disposable {
       }));
     try {
       fs.writeFileSync(this.sessionsFile, JSON.stringify(entries, null, 2));
-      const skipped = this.agents.size - entries.length;
-      console.log(
-        `[glancer] persist: wrote ${entries.length} agent(s) to ${this.sessionsFile}` +
-          (skipped > 0 ? ` (${skipped} unprompted skipped)` : ''),
-      );
     } catch (err) {
       console.warn('[glancer] failed to persist sessions:', err);
     }
@@ -532,7 +517,6 @@ export class AgentManager implements vscode.Disposable {
     const agentId = wrapper.agentId;
     const hookEvent = wrapper.payload?.hook_event_name;
     const sessionId = wrapper.payload?.session_id;
-    console.log('[glancer] hook event:', { agentId, hookEvent, sessionId });
     if (!agentId) return;
     const agent = this.agents.get(agentId);
     if (!agent) {
@@ -550,7 +534,6 @@ export class AgentManager implements vscode.Disposable {
       // input" marker. Wipe it. 'startup' and 'resume' deliberately
       // preserve state.
       const source = wrapper.payload?.source;
-      console.log('[glancer] SessionStart source=', source);
       if (source === 'clear' || source === 'compact') {
         agent.resetCardState();
       }
@@ -582,16 +565,10 @@ export class AgentManager implements vscode.Disposable {
       // a minute of user idle time. Message-regex kept as a defensive
       // fallback for the rare race where idle fires before Stop is
       // processed.
-      if (!agent.streaming) {
-        console.log('[glancer] Notification: skipping (turn already ended)');
-        return;
-      }
+      if (!agent.streaming) return;
       const payload = wrapper.payload as { message?: string } | undefined;
       const raw = typeof payload?.message === 'string' ? payload.message.trim() : '';
-      if (/claude is waiting for your input/i.test(raw)) {
-        console.log('[glancer] Notification: skipping idle-timeout ping');
-        return;
-      }
+      if (/claude is waiting for your input/i.test(raw)) return;
       const message = raw || 'Waiting for input';
       agent.setNeedsAttention(message);
     }

@@ -631,7 +631,6 @@ export class Agent implements vscode.Disposable {
     }
 
     if (Object.keys(patch).length > 0) {
-      console.log(`[glancer] ${this.id} applyState patch=`, patch);
       this.changeEmitter.fire(patch);
       // Name/titleSource end up in sessions.json — re-persist when either
       // moves so a restart picks up the AI-set title without losing the

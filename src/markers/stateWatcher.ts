@@ -47,7 +47,6 @@ export function watchState(
       if (raw.length === 0) return;
       const parsed = JSON.parse(raw);
       if (typeof parsed !== 'object' || parsed === null) return;
-      console.log(`[glancer] stateWatcher: ${label} ${filePath} →`, parsed);
       onState(parsed as AgentState);
     } catch (err) {
       // Partial writes (Claude is mid-write) produce invalid JSON. Swallow

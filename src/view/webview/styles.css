@@ -219,8 +219,10 @@ body {
 }
 
 @keyframes dot-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.5; transform: scale(0.85); }
+  /* Preserve translateY(-50%) from the .agent-status anchor — animating
+   * transform here would otherwise clobber it and push the dot off-center. */
+  0%, 100% { opacity: 1;   transform: translateY(-50%) scale(1); }
+  50%      { opacity: 0.5; transform: translateY(-50%) scale(0.85); }
 }
 
 /* Title row */

@@ -42,7 +42,23 @@ const ALT_SCREEN_MARKERS = ['\x1b[?1049h', '\x1b[?1047h', '\x1b[?47h'];
 // hand control to Claude's TUI. Without the scrollback wipe (\x1b[3J) the
 // user can scroll up and see the buffered system-prompt invocation.
 const SCREEN_RESET = '\x1b[2J\x1b[3J\x1b[H';
-const STARTUP_PLACEHOLDER = `${SCREEN_RESET}\x1b[2;90mStarting Claude session…\x1b[0m\r\n`;
+const HIDE_CURSOR = '\x1b[?25l';
+const SHOW_CURSOR = '\x1b[?25h';
+// 3-dot wave that mirrors the card's bottom-right starting pulse. True-color
+// escapes keep the bright dot exactly on the card's accent blue regardless
+// of the terminal's 16-color palette mapping.
+const LABEL = '\x1b[2;90mStarting Claude session\x1b[0m';
+const BRIGHT = '\x1b[38;2;99;162;255m';
+const DIM = '\x1b[38;2;110;110;110m';
+const RESET = '\x1b[0m';
+const DOT = '●';
+const PLACEHOLDER_FRAMES = [
+  `${SCREEN_RESET}${HIDE_CURSOR}${LABEL}  ${BRIGHT}${DOT}${RESET} ${DIM}${DOT}${RESET} ${DIM}${DOT}${RESET}\r\n`,
+  `${SCREEN_RESET}${HIDE_CURSOR}${LABEL}  ${DIM}${DOT}${RESET} ${BRIGHT}${DOT}${RESET} ${DIM}${DOT}${RESET}\r\n`,
+  `${SCREEN_RESET}${HIDE_CURSOR}${LABEL}  ${DIM}${DOT}${RESET} ${DIM}${DOT}${RESET} ${BRIGHT}${DOT}${RESET}\r\n`,
+  `${SCREEN_RESET}${HIDE_CURSOR}${LABEL}  ${DIM}${DOT}${RESET} ${BRIGHT}${DOT}${RESET} ${DIM}${DOT}${RESET}\r\n`,
+];
+const FRAME_INTERVAL_MS = 180;
 
 export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
   const writeEmitter = new vscode.EventEmitter<string>();
@@ -65,16 +81,30 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
   let startupBuf = '';
   let startupTimer: NodeJS.Timeout | null = null;
   let placeholderShown = false;
+  let placeholderTimer: NodeJS.Timeout | null = null;
+  let placeholderFrame = 0;
+
+  const stopPlaceholderAnimation = () => {
+    if (placeholderTimer) {
+      clearInterval(placeholderTimer);
+      placeholderTimer = null;
+    }
+  };
 
   const showPlaceholderOnce = () => {
     if (placeholderShown) return;
     placeholderShown = true;
-    writeEmitter.fire(STARTUP_PLACEHOLDER);
+    writeEmitter.fire(PLACEHOLDER_FRAMES[0]);
+    placeholderTimer = setInterval(() => {
+      placeholderFrame = (placeholderFrame + 1) % PLACEHOLDER_FRAMES.length;
+      writeEmitter.fire(PLACEHOLDER_FRAMES[placeholderFrame]);
+    }, FRAME_INTERVAL_MS);
   };
 
   const completeStartup = (flushFrom: number) => {
     if (phase === 'ready') return;
     phase = 'ready';
+    stopPlaceholderAnimation();
     if (startupTimer) {
       clearTimeout(startupTimer);
       startupTimer = null;
@@ -94,8 +124,13 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
     //   was about to paint.
     const tail = startupBuf.slice(flushFrom);
     startupBuf = '';
-    if (tail.length > 0) writeEmitter.fire(SCREEN_RESET + tail);
-    else writeEmitter.fire(SCREEN_RESET);
+    // Restore the cursor (the animation hid it) before Claude's TUI takes
+    // over; Claude will set its own cursor preference once it boots, but
+    // in the timeout path (where Claude hasn't painted yet) we need this
+    // so the terminal isn't left without one.
+    const cursor = SHOW_CURSOR;
+    if (tail.length > 0) writeEmitter.fire(SCREEN_RESET + cursor + tail);
+    else writeEmitter.fire(SCREEN_RESET + cursor);
     startupCompleteEmitter.fire();
   };
 
@@ -202,6 +237,7 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
       nameEmitter.fire(name);
     },
     dispose() {
+      stopPlaceholderAnimation();
       if (startupTimer) {
         clearTimeout(startupTimer);
         startupTimer = null;

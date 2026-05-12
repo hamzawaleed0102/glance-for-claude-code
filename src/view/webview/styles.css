@@ -23,8 +23,18 @@ body {
   padding: 0;
 }
 
+/* Layout root — the picker row sits above the agent panel, both share 100vh.
+ * Without this, the agent panel's height: 100vh would overflow the viewport
+ * once the picker is rendered above it, and the picker row scrolls out of
+ * view as soon as the popover's input takes focus. */
+#root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
 /* Panel chrome */
-.agent-panel { display: flex; flex-direction: column; height: 100vh; outline: none; }
+.agent-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; outline: none; }
 .panel-header {
   display: flex;
   justify-content: space-between;

@@ -1,8 +1,13 @@
 # Changelog
 
-## 0.0.6 — 2026-05-12
+## 0.0.7 — 2026-05-12
 
-- Polish: slightly round the Marketplace icon corners (rx=24) so the listing tile reads as an app icon, not a flat poster.
+- **Variable-height cards.** Agent cards no longer have a fixed 86px ceiling. They grow and shrink to fit their content (TL;DR, progress, error / needs-input), and the description and progress rows animate in and out smoothly (220ms grid-rows easing) instead of snapping.
+- **Persisted state stays visible during revival.** Clicking a dormant agent no longer wipes its card back to a blank "starting session…" state. The persisted title, TL;DR, and progress stay in place; a small `••• starting…` chip pulses in the bottom-right while the PTY warms up.
+- **Progress bar shows during error / needs-input too.** Previously the bar was hidden whenever the card carried an error or attention flag, even mid-stream. Now it stays visible until the turn finishes cleanly.
+- **Visual polish.** Square corners, slightly more padding, consistent inter-row spacing, bare X close button (no chrome) in the top-right.
+- **Slightly rounded Marketplace icon** (rx=24) so the listing tile reads as an app icon, not a flat poster.
+- Internal: stripped `console.log` debug noise from the extension host. Failure-path `console.warn` / `console.error` sites kept.
 
 ## 0.0.5 — 2026-05-12
 

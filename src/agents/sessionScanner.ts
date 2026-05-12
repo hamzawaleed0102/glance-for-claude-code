@@ -11,12 +11,16 @@ const MAX_SCAN_LINES = 200;
 
 /**
  * Convert an absolute filesystem path into the slug Claude Code uses
- * for its per-project directory under ~/.claude/projects/. Verified
- * against the actual directory layout: every `/` becomes `-`, dots
- * and other characters pass through unchanged.
+ * for its per-project directory under ~/.claude/projects/. Claude
+ * replaces both `/` and `.` with `-`, so `/Users/me/.config/foo`
+ * becomes `-Users-me--config-foo` (note the `--` for `/.`). Without
+ * the dot substitution, any workspace path containing a hidden dir
+ * or a dotted name (`project.v2`, `foo.git`, `~/.local/share/...`)
+ * misses its real session directory and the picker silently shows
+ * "no past sessions".
  */
 export function encodeCwd(cwd: string): string {
-  return cwd.replace(/\//g, '-');
+  return cwd.replace(/[/.]/g, '-');
 }
 
 /**

@@ -60,6 +60,24 @@ test('encodeCwd replaces forward slashes with dashes', () => {
   );
 });
 
+test('encodeCwd replaces dots with dashes (hidden dirs and dotted names)', () => {
+  // /.claude → --claude (forward-slash AND dot both become dashes)
+  assert.equal(
+    encodeCwd('/Users/me/Glancer/.claude/worktrees/agent-progress-bar'),
+    '-Users-me-Glancer--claude-worktrees-agent-progress-bar',
+  );
+  // dotted file/dir name
+  assert.equal(
+    encodeCwd('/home/me/project.v2'),
+    '-home-me-project-v2',
+  );
+  // hidden home subdir
+  assert.equal(
+    encodeCwd('/home/me/.config/something'),
+    '-home-me--config-something',
+  );
+});
+
 test('listOldSessions returns [] when project dir does not exist', async () => {
   const tmp = mkTmpProjectDir();
   process.env.HOME = path.join(tmp, 'home');

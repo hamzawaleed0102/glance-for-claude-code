@@ -460,3 +460,114 @@ body {
   background: var(--vscode-menu-selectionBackground);
   color: var(--vscode-menu-selectionForeground);
 }
+
+/* ---------- Old sessions picker ---------- */
+.old-sessions {
+  position: relative;
+  border-bottom: 1px solid var(--border);
+}
+.old-sessions-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+.old-sessions-row:hover:not(:disabled) {
+  background: var(--hover);
+}
+.old-sessions-row:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.old-sessions-row .chev {
+  width: 10px;
+  height: 10px;
+  transition: transform 160ms ease;
+}
+.old-sessions-row.open .chev {
+  transform: rotate(180deg);
+}
+.old-sessions-row-label {
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.old-sessions-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: var(--vscode-menu-background, #1a1d22);
+  border: 1px solid var(--border);
+  border-top: none;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.40);
+}
+.old-sessions-filter {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.old-sessions-filter input {
+  width: 100%;
+  padding: 4px 6px;
+  box-sizing: border-box;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent);
+  font: inherit;
+}
+.old-sessions-list {
+  flex: 1;
+  overflow: auto;
+}
+.old-sessions-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 11px;
+}
+.old-sessions-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.old-sessions-item:last-child {
+  border-bottom: none;
+}
+.old-sessions-item.active,
+.old-sessions-item:hover {
+  background: var(--active);
+}
+.old-sessions-item-title {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.old-sessions-item-title.untitled {
+  color: var(--muted);
+  font-style: italic;
+}
+.old-sessions-item-meta {
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}

@@ -164,52 +164,54 @@ export function AgentCard({
         )}
       </div>
 
-      {agent.starting ? (
-        <div className="agent-card-sub agent-starting-row">
+      <div className="reveal" data-open={description ? 'true' : 'false'}>
+        <div className="reveal-inner">
+          {description && (
+            <div
+              className={`agent-card-sub agent-tldr ${descriptionTone}`}
+              title={description}
+            >
+              {description}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div
+        className="reveal"
+        data-open={agent.progress && status !== 'done' ? 'true' : 'false'}
+      >
+        <div className="reveal-inner">
+          {agent.progress && status !== 'done' && (
+            // Render whenever progress data exists and the turn hasn't
+            // finished cleanly. On a cleanly-done turn the green ✓ on
+            // the left rail tells the user we're finished, so the bar
+            // would be redundant. During streaming, error, or
+            // needs-input states the bar still carries useful info.
+            <div className="agent-progress-row">
+              <div className="agent-progress-track">
+                <div
+                  className="agent-progress-fill"
+                  style={{ width: `${Math.round(agent.progress.value * 100)}%` }}
+                />
+              </div>
+              <div className="agent-progress-label">{agent.progress.label}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {agent.starting && (
+        // Small bottom-right indicator while the PTY warms up. Persisted
+        // card state (description / progress) stays visible above so a
+        // revived dormant agent doesn't visually reset to its default
+        // empty card during the few hundred ms before alt-screen flush.
+        <div className="agent-starting-indicator" aria-label="Starting session">
           <span className="agent-starting-pulse" aria-hidden="true">
             <span /><span /><span />
           </span>
-          <span className="agent-starting-label">starting session…</span>
+          <span className="agent-starting-label">starting…</span>
         </div>
-      ) : (
-        <>
-          <div className="reveal" data-open={description ? 'true' : 'false'}>
-            <div className="reveal-inner">
-              {description && (
-                <div
-                  className={`agent-card-sub agent-tldr ${descriptionTone}`}
-                  title={description}
-                >
-                  {description}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div
-            className="reveal"
-            data-open={agent.progress && status !== 'done' ? 'true' : 'false'}
-          >
-            <div className="reveal-inner">
-              {agent.progress && status !== 'done' && (
-                // Render whenever progress data exists and the turn hasn't
-                // finished cleanly. On a cleanly-done turn the green ✓ on
-                // the left rail tells the user we're finished, so the bar
-                // would be redundant. During streaming, error, or
-                // needs-input states the bar still carries useful info.
-                <div className="agent-progress-row">
-                  <div className="agent-progress-track">
-                    <div
-                      className="agent-progress-fill"
-                      style={{ width: `${Math.round(agent.progress.value * 100)}%` }}
-                    />
-                  </div>
-                  <div className="agent-progress-label">{agent.progress.label}</div>
-                </div>
-              )}
-            </div>
-          </div>
-        </>
       )}
 
       <button

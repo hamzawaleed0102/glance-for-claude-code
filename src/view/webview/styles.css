@@ -306,15 +306,27 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* While the starting indicator is occupying bottom-right, give the
+ * progress label some right-padding so its ellipsis happens before it
+ * runs into the indicator chip. */
+.agent-card.starting .agent-progress-label { padding-right: 80px; }
 
-/* Starting overlay row (dots + label) */
-.agent-starting-row {
-  display: flex;
+/* Starting indicator — tiny bottom-right chip while a dormant agent
+ * is being revived. Anchored absolutely so persisted card state
+ * (description / progress) stays in place above it. */
+.agent-starting-indicator {
+  position: absolute;
+  bottom: 6px;
+  right: 10px;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   color: var(--muted);
+  font-size: 10px;
+  opacity: 0.9;
+  pointer-events: none;
 }
-.agent-starting-label { font-size: 11px; }
+.agent-starting-label { font-size: 10px; }
 .agent-starting-pulse { display: inline-flex; gap: 3px; align-items: center; }
 .agent-starting-pulse span {
   width: 4px;

@@ -6,6 +6,7 @@ import { Agent } from './Agent';
 import { nextAgentId } from './ids';
 import { summarySystemPrompt } from '../markers/systemPrompt';
 import type { AgentSnapshot, ClaudeModel } from '../shared/messages';
+import { listOldSessions as scanOldSessions, type OldSession } from './sessionScanner';
 
 interface ManagerInit {
   context: vscode.ExtensionContext;
@@ -341,6 +342,46 @@ export class AgentManager implements vscode.Disposable {
       id,
       cwd: opts.cwd,
       model: opts.model ?? 'default',
+    });
+    this.agents.set(id, agent);
+    this.changeEmitter.fire({ type: 'added', agent: agent.snapshot() });
+    this.setActive(id);
+    agent.reveal();
+    this.persist();
+    return id;
+  }
+
+  /**
+   * Return past Claude Code sessions for `cwd`, excluding any whose
+   * sessionId is currently held by a live agent in this manager. The
+   * scanner is pure and async; this method just plumbs the open-agent
+   * set and delegates.
+   */
+  listOldSessions(cwd: string): Promise<OldSession[]> {
+    const open = new Set<string>();
+    for (const a of this.agents.values()) {
+      if (a.sessionId) open.add(a.sessionId);
+    }
+    return scanOldSessions(cwd, open);
+  }
+
+  /**
+   * Open an existing Claude Code session as a new agent card. Spawns
+   * the PTY immediately with `claude --resume <sessionId>` via the
+   * normal makeAgent path. `hasUserPrompt: true` is hard-coded because
+   * a session already on disk must have user prompts — otherwise the
+   * resume would fail anyway, and Agent.onExit would drop it to
+   * dormant naturally.
+   */
+  openOldSession(opts: { cwd: string; sessionId: string }): string {
+    const id = nextAgentId(this.agents.keys());
+    const agent = this.makeAgent({
+      id,
+      cwd: opts.cwd,
+      model: 'default',
+      sessionId: opts.sessionId,
+      hasUserPrompt: true,
+      dormant: false,
     });
     this.agents.set(id, agent);
     this.changeEmitter.fire({ type: 'added', agent: agent.snapshot() });

@@ -212,31 +212,29 @@ export class AgentManager implements vscode.Disposable {
    * keep running. The new extension host has no reference to them, so
    * clicking an agent card used to spawn a duplicate `--resume` PTY.
    *
-   * Instead of disposing them, we ADOPT: build a name → Terminal map of
-   * surviving Glance-tagged terminals (eye `ThemeIcon`), and let
-   * `restorePersistedAgents` consume it — each persisted agent that
-   * finds its name in the map skips spawning a fresh PTY and reuses the
-   * live terminal. Identification is structural (`{ id: 'eye' }`) since
-   * the `ThemeIcon` prototype doesn't survive the host boundary.
+   * Instead of disposing them, we ADOPT: any visible terminal whose
+   * `name` matches a persisted agent's `name` is a candidate. The agent
+   * skips spawning a fresh PTY and reuses the live terminal.
    *
-   * Unmatched eye terminals are left alone — they may belong to agents
-   * the user killed before reload (their `sessions.json` entry is gone)
-   * or to extensions impersonating our icon. Disposing them would be
-   * destructive; the user can close them by hand.
+   * Earlier versions matched on `creationOptions.iconPath.id === 'eye'`,
+   * but that signal isn't reliably preserved when terminals are
+   * orphaned across the host boundary (the iconPath was set via a
+   * `ThemeIcon` instance from the dead extension host's runtime —
+   * VS Code can lose it on rehydration). Names round-trip through
+   * sessions.json, which we already trust, so a name lookup against
+   * the persisted set is the more robust signal.
+   *
+   * Trade-off: if the user manually created an unrelated terminal whose
+   * name happens to match a persisted agent (very unlikely — names are
+   * either `glance-NN` or AI/manual titles), we'd adopt it. Worst case
+   * they close it; we treat that as a kill (the agent's sessions.json
+   * entry goes away and they can reopen via the old-sessions picker).
    */
-  private surveyAdoptableTerminals(): Map<string, vscode.Terminal> {
+  private surveyAdoptableTerminals(expectedNames: Set<string>): Map<string, vscode.Terminal> {
     const map = new Map<string, vscode.Terminal>();
+    if (expectedNames.size === 0) return map;
     for (const t of vscode.window.terminals) {
-      const opts = t.creationOptions as { iconPath?: unknown } | undefined;
-      const icon = opts?.iconPath;
-      if (
-        icon &&
-        typeof icon === 'object' &&
-        'id' in icon &&
-        (icon as { id?: unknown }).id === 'eye'
-      ) {
-        map.set(t.name, t);
-      }
+      if (expectedNames.has(t.name)) map.set(t.name, t);
     }
     return map;
   }
@@ -264,10 +262,6 @@ export class AgentManager implements vscode.Disposable {
    * calls reveal() → revive() and starts claude with `--resume <id>`).
    */
   private restorePersistedAgents(): void {
-    // Terminals that survived a previous extension host — keyed by their
-    // tab name. Each persisted agent below claims the matching entry (if
-    // any) and adopts the terminal instead of spawning a fresh PTY.
-    const adoptable = this.surveyAdoptableTerminals();
     let raw: string;
     try {
       raw = fs.readFileSync(this.sessionsFile, 'utf8');
@@ -286,6 +280,15 @@ export class AgentManager implements vscode.Disposable {
       console.warn('[glancer] restorePersistedAgents: file is not an array, ignoring');
       return;
     }
+    // Build the adoption candidate map AFTER parsing entries so we can
+    // key the survey by persisted names — that's what we'll be looking
+    // up below. Empty set when sessions.json is empty short-circuits the
+    // survey entirely.
+    const expectedNames = new Set<string>();
+    for (const e of entries as Array<{ name?: unknown }>) {
+      if (e && typeof e.name === 'string') expectedNames.add(e.name);
+    }
+    const adoptable = this.surveyAdoptableTerminals(expectedNames);
     for (const e of entries as Array<{
       id: string;
       cwd: string;

@@ -279,13 +279,19 @@ body {
   line-height: 1.5;
 }
 
-/* Sub-line — TLDR / needs-input / error description */
+/* Sub-line — TLDR / needs-input / error description.
+ * Wraps onto multiple lines; clamped so a very long tldr can't dominate
+ * the card. The full text is still available via the title attribute. */
 .agent-card-sub {
   font-size: 11.5px;
   line-height: 1.4;
-  white-space: nowrap;
+  white-space: normal;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
 }
 .agent-tldr.muted { color: var(--muted); }
 .agent-tldr.warn { color: var(--warn); font-weight: 500; }

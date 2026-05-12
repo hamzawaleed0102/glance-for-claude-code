@@ -188,15 +188,15 @@ export function AgentCard({
 
           <div
             className="reveal"
-            data-open={agent.progress && status === 'streaming' ? 'true' : 'false'}
+            data-open={agent.progress && status !== 'done' ? 'true' : 'false'}
           >
             <div className="reveal-inner">
-              {agent.progress && status === 'streaming' && (
-                // Only render while actively streaming. Once the turn ends
-                // (status flips to 'done'), the green ✓ on the left rail
-                // tells the user we're finished — the bar becomes
-                // redundant. It reappears on the next UserPromptSubmit
-                // when streaming flips back on.
+              {agent.progress && status !== 'done' && (
+                // Render whenever progress data exists and the turn hasn't
+                // finished cleanly. On a cleanly-done turn the green ✓ on
+                // the left rail tells the user we're finished, so the bar
+                // would be redundant. During streaming, error, or
+                // needs-input states the bar still carries useful info.
                 <div className="agent-progress-row">
                   <div className="agent-progress-track">
                     <div

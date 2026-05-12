@@ -490,12 +490,8 @@ body {
   font-size: 12px;
   text-align: left;
 }
-.old-sessions-row:hover:not(:disabled) {
+.old-sessions-row:hover {
   background: var(--hover);
-}
-.old-sessions-row:disabled {
-  color: var(--muted);
-  cursor: not-allowed;
 }
 .old-sessions-row .chev {
   width: 10px;

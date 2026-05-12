@@ -353,16 +353,47 @@ export class AgentManager implements vscode.Disposable {
 
   /**
    * Return past Claude Code sessions for `cwd`, excluding any whose
-   * sessionId is currently held by a live agent in this manager. The
-   * scanner is pure and async; this method just plumbs the open-agent
-   * set and delegates.
+   * sessionId is currently held by a live agent in this manager. After
+   * scanning, enriches each result with the Glance-assigned title (from
+   * sessions.json) when we have one — Claude doesn't store a title in
+   * its own transcript, so the picker prefers our title over the raw
+   * first prompt.
    */
-  listOldSessions(cwd: string): Promise<OldSession[]> {
+  async listOldSessions(cwd: string): Promise<OldSession[]> {
     const open = new Set<string>();
     for (const a of this.agents.values()) {
       if (a.sessionId) open.add(a.sessionId);
     }
-    return scanOldSessions(cwd, open);
+    // sessionId → Glance-assigned title (only entries where the model
+    // or user has overridden the default `glance-NN`).
+    const nameBySession = new Map<string, string>();
+    try {
+      const raw = fs.readFileSync(this.sessionsFile, 'utf8');
+      const entries: unknown = JSON.parse(raw);
+      if (Array.isArray(entries)) {
+        for (const e of entries as Array<{
+          sessionId?: string;
+          name?: string;
+          titleSource?: string;
+        }>) {
+          if (
+            typeof e?.sessionId === 'string' &&
+            typeof e.name === 'string' &&
+            e.titleSource &&
+            e.titleSource !== 'default'
+          ) {
+            nameBySession.set(e.sessionId, e.name);
+          }
+        }
+      }
+    } catch {
+      // No persisted sessions yet — every session falls back to firstPrompt.
+    }
+    const sessions = await scanOldSessions(cwd, open);
+    return sessions.map((s) => ({
+      ...s,
+      name: nameBySession.get(s.sessionId) ?? null,
+    }));
   }
 
   /**

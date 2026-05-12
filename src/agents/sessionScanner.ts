@@ -68,7 +68,9 @@ export async function listOldSessions(
       } catch (err) {
         console.warn('[glancer] scanner: failed to read', filePath, err);
       }
-      const session: OldSession = { sessionId, firstPrompt, mtimeMs };
+      // `name` is filled in later by AgentManager from sessions.json —
+      // the scanner has no access to Glance's title bookkeeping.
+      const session: OldSession = { sessionId, firstPrompt, name: null, mtimeMs };
       return session;
     }),
   );

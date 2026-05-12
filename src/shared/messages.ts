@@ -27,11 +27,18 @@ export interface AgentSnapshot {
  * ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl — Claude doesn't
  * store an explicit title, so `firstPrompt` is the first usable user
  * message text (truncated to 200 chars). `null` means no usable prompt
- * was found; the UI renders that as "untitled session".
+ * was found.
+ *
+ * `name` carries the Glance-assigned title for this session when we have
+ * one — set by Claude via the MCP `update_state` tool and persisted in
+ * sessions.json. Only populated when titleSource was non-default. The
+ * UI prefers `name` over `firstPrompt`, and renders "untitled session"
+ * only when both are absent.
  */
 export interface OldSession {
   sessionId: string;
   firstPrompt: string | null;
+  name: string | null;
   mtimeMs: number;
 }
 

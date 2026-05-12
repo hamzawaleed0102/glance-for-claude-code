@@ -124,11 +124,11 @@ export function OldSessionsPicker({ sessions, onOpen }: Props) {
     }
   };
 
-  // Loading == sessions is null and popover open. Empty-after-fetch ==
-  // sessions is an empty array. Disabled == we have a definitive empty
-  // list AND the popover isn't open yet.
+  // Loading == sessions is null and popover open. The row is never
+  // disabled — clicking it always re-fetches so a session created since
+  // the last open shows up. The "no past sessions" message lives inside
+  // the popover.
   const loading = open && sessions === null;
-  const emptyAfterFetch = sessions !== null && sessions.length === 0;
 
   return (
     <div className="old-sessions" ref={containerRef}>
@@ -136,8 +136,6 @@ export function OldSessionsPicker({ sessions, onOpen }: Props) {
         type="button"
         className={`old-sessions-row${open ? ' open' : ''}`}
         onClick={toggle}
-        disabled={emptyAfterFetch && !open}
-        title={emptyAfterFetch ? 'no past sessions in this workspace' : undefined}
       >
         <span className="old-sessions-row-label">Open old session</span>
         <svg
@@ -186,10 +184,10 @@ export function OldSessionsPicker({ sessions, onOpen }: Props) {
                 >
                   <span
                     className={`old-sessions-item-title${
-                      s.firstPrompt ? '' : ' untitled'
+                      s.name || s.firstPrompt ? '' : ' untitled'
                     }`}
                   >
-                    {s.firstPrompt ?? 'untitled session'}
+                    {s.name ?? s.firstPrompt ?? 'untitled session'}
                   </span>
                   <span className="old-sessions-item-meta">
                     {shortId(s.sessionId)} · {formatRelativeTime(s.mtimeMs)}

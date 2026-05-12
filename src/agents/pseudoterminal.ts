@@ -47,18 +47,29 @@ const SHOW_CURSOR = '\x1b[?25h';
 // 3-dot wave that mirrors the card's bottom-right starting pulse. True-color
 // escapes keep the bright dot exactly on the card's accent blue regardless
 // of the terminal's 16-color palette mapping.
-const LABEL = '\x1b[2;90mStarting Claude session\x1b[0m';
+const LABEL_TEXT = 'Starting Claude session';
+const LABEL = `\x1b[2;90m${LABEL_TEXT}\x1b[0m`;
 const BRIGHT = '\x1b[38;2;99;162;255m';
 const DIM = '\x1b[38;2;110;110;110m';
 const RESET = '\x1b[0m';
 const DOT = '●';
-const PLACEHOLDER_FRAMES = [
-  `${SCREEN_RESET}${HIDE_CURSOR}${LABEL}  ${BRIGHT}${DOT}${RESET} ${DIM}${DOT}${RESET} ${DIM}${DOT}${RESET}\r\n`,
-  `${SCREEN_RESET}${HIDE_CURSOR}${LABEL}  ${DIM}${DOT}${RESET} ${BRIGHT}${DOT}${RESET} ${DIM}${DOT}${RESET}\r\n`,
-  `${SCREEN_RESET}${HIDE_CURSOR}${LABEL}  ${DIM}${DOT}${RESET} ${DIM}${DOT}${RESET} ${BRIGHT}${DOT}${RESET}\r\n`,
-  `${SCREEN_RESET}${HIDE_CURSOR}${LABEL}  ${DIM}${DOT}${RESET} ${BRIGHT}${DOT}${RESET} ${DIM}${DOT}${RESET}\r\n`,
+// "Starting Claude session  ● ● ●" — 23 chars label + 2 gap + 5 dot row = 30.
+const PLACEHOLDER_WIDTH = LABEL_TEXT.length + 2 + 5;
+const DOT_FRAMES = [
+  `${BRIGHT}${DOT}${RESET} ${DIM}${DOT}${RESET} ${DIM}${DOT}${RESET}`,
+  `${DIM}${DOT}${RESET} ${BRIGHT}${DOT}${RESET} ${DIM}${DOT}${RESET}`,
+  `${DIM}${DOT}${RESET} ${DIM}${DOT}${RESET} ${BRIGHT}${DOT}${RESET}`,
+  `${DIM}${DOT}${RESET} ${BRIGHT}${DOT}${RESET} ${DIM}${DOT}${RESET}`,
 ];
 const FRAME_INTERVAL_MS = 180;
+
+function buildPlaceholderFrame(frame: number, cols: number, rows: number): string {
+  // Center vertically and horizontally inside the current terminal dimensions.
+  // Cursor positioning is 1-based; clamp to 1 so a tiny pane still renders.
+  const row = Math.max(1, Math.floor(rows / 2));
+  const col = Math.max(1, Math.floor((cols - PLACEHOLDER_WIDTH) / 2) + 1);
+  return `${SCREEN_RESET}${HIDE_CURSOR}\x1b[${row};${col}H${LABEL}  ${DOT_FRAMES[frame]}`;
+}
 
 export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
   const writeEmitter = new vscode.EventEmitter<string>();
@@ -94,10 +105,10 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
   const showPlaceholderOnce = () => {
     if (placeholderShown) return;
     placeholderShown = true;
-    writeEmitter.fire(PLACEHOLDER_FRAMES[0]);
+    writeEmitter.fire(buildPlaceholderFrame(0, cols, rows));
     placeholderTimer = setInterval(() => {
-      placeholderFrame = (placeholderFrame + 1) % PLACEHOLDER_FRAMES.length;
-      writeEmitter.fire(PLACEHOLDER_FRAMES[placeholderFrame]);
+      placeholderFrame = (placeholderFrame + 1) % DOT_FRAMES.length;
+      writeEmitter.fire(buildPlaceholderFrame(placeholderFrame, cols, rows));
     }, FRAME_INTERVAL_MS);
   };
 

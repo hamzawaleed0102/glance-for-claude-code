@@ -1,11 +1,10 @@
-name: Build VSIX artifacts
+name: Build and publish VSIX artifacts
 
 # Build per-platform .vsix files for every target we support. Triggered
-# manually (workflow_dispatch) or by pushing a `v*` tag. Does NOT publish
-# to the VS Code Marketplace — that's a deliberate, manual step (see the
-# `feedback_publish_consent` memory). Download the produced artifacts
-# from the workflow run, inspect them, then publish with
-# `npx @vscode/vsce publish --packagePath dist/<name>-<target>.vsix`.
+# manually (workflow_dispatch) or by pushing a `v*` tag. On tag pushes
+# each matrix job ALSO publishes its .vsix to the VS Code Marketplace
+# using the VSCE_PAT secret. Manual workflow_dispatch runs build the
+# artifacts but skip publishing — use that path for dry-runs.
 
 on:
   push:
@@ -86,3 +85,31 @@ jobs:
           path: dist/*.vsix
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish to VS Code Marketplace
+        # Only on tag pushes. Manual workflow_dispatch runs stop after
+        # the artifact upload so we can dry-run a build without shipping.
+        # Each matrix job publishes its own .vsix independently — with
+        # fail-fast: false, a single platform failure won't block the
+        # others from shipping. Re-run the failed job to fill the gap.
+        # "Already published" errors (someone shipped that target+version
+        # locally already) are treated as success so the workflow stays
+        # idempotent across partial re-runs.
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          for f in dist/*.vsix; do
+            echo "Publishing $f"
+            if out=$(npx @vscode/vsce publish --packagePath "$f" 2>&1); then
+              echo "$out"
+            else
+              echo "$out"
+              if echo "$out" | grep -qiE "(already exists|duplicate version|409)"; then
+                echo "→ already published, treating as success"
+              else
+                exit 1
+              fi
+            fi
+          done

@@ -2,11 +2,11 @@
 
 by [Hamza Waleed](https://hamzawaleed.com)
 
-Run multiple Claude Code sessions side-by-side in VS Code, with a live status card for each one.
+Manage multiple Claude Code agents at a glance in VS Code — live status cards for each session, no eye strain switching between terminals.
 
 ![Glance — multi-session Claude Code agent panel for VS Code](resources/readme/hero.png)
 
-Every agent runs in a real VS Code terminal. Each one reports its own title, one-line TL;DR, progress, and a flag when it's blocked on you — all on a card in the sidebar — so you can keep five sessions humming without losing track of which one needs you next.
+Every agent runs in a real VS Code terminal. Each one reports its own title, one-line TL;DR, progress, and a flag when it's blocked on you — all on a card in the sidebar — so you can keep five sessions humming without staring at five terminals.
 
 ## Install
 
@@ -38,7 +38,7 @@ Five fields, sent on every call (pass `null` for what doesn't apply):
 | `needsInput` | Short clause when the agent is waiting on you. Lights the card yellow. |
 | `error` | Short clause when a hard failure blocks progress. Lights the card red. |
 
-The card also tracks lifecycle automatically — turn-complete plays a tone, `/clear` and `/compact` reset the card, and Claude's idle "Notification" pings are ignored mid-stream so they don't false-positive the attention flag.
+The card also tracks lifecycle automatically — turn-complete plays a tone (only when you're not already watching that agent), `/clear` and `/compact` reset the card, and Claude's idle "Notification" pings are ignored mid-stream so they don't false-positive the attention flag.
 
 ### Drag to reorder
 
@@ -52,13 +52,11 @@ When any agent needs input or hits an error, the Glance icon in the activity bar
 
 ![Activity-bar count badge appears when an agent is waiting on you](resources/readme/badge.png)
 
-### Toast when a turn finishes in the background
+### Heads-up when a turn finishes in the background
 
-If you're not actively watching an agent when its turn completes, Glance fires a native VS Code information toast (plus a short tone) so the result reaches you without yanking focus. The toast carries the agent's name, the latest `tldr` or `needsInput` reason, and a **Show** button that jumps straight to that terminal.
+If you're not actively watching an agent when its turn completes, Glance plays a soft tone so the result reaches your ears without yanking focus or stacking a notification panel entry. The activity-bar badge and the card's status pip pick up the visual side — see above.
 
-![VS Code information toast showing an agent's name and the reason it needs you, with a Show button](resources/readme/notification.png)
-
-The toast is suppressed when you're already looking at that agent's terminal, so you don't get pinged for work you're staring at.
+The tone is suppressed when you're already looking at that agent's terminal, so you don't get pinged for work you're staring at.
 
 ### Sessions persist across reloads
 
@@ -70,15 +68,28 @@ Close VS Code, reopen it — your agents are still there. Reload-the-window does
 
 The dropdown chevron next to **+ New Session** lets you choose Opus / Sonnet / Haiku per agent. The card shows a small chip with the active model.
 
-## Keybindings
+## Keyboard shortcuts
+
+The whole point of Glance is that you steer a fleet from one panel — no terminal-tab juggling. Most of the shortcuts only fire while the panel itself is focused (`Cmd+Shift+G` / `Ctrl+Shift+G` gets you there from anywhere).
+
+### From anywhere in VS Code
 
 | Action | Shortcut |
 | --- | --- |
-| Focus panel | `Cmd+Shift+G` / `Ctrl+Shift+G` |
-| New agent (panel focused) | `Cmd+Shift+G` / `Ctrl+Shift+G` |
-| New agent (anywhere) | `Cmd+Alt+N` / `Ctrl+Alt+N` |
-| Kill active agent | `Cmd+Backspace` / `Ctrl+Backspace` (panel focused) |
-| Cycle agents | `↑` / `↓` (panel focused) |
+| Focus the Glance panel | `Cmd+Shift+G` / `Ctrl+Shift+G` |
+| New agent | `Cmd+Alt+N` / `Ctrl+Alt+N` |
+
+### With the Glance panel focused
+
+| Action | Shortcut |
+| --- | --- |
+| Cycle agents | `↑` / `↓` |
+| Jump into the highlighted agent's terminal | `Enter` |
+| Drop back to the panel | `Esc` |
+| New agent | `g` (or `Cmd+Shift+G` again) |
+| Run `/clear` on the highlighted agent | `c` `c` (press `c` twice within 400 ms) |
+| Toggle bottom-panel maximize (full-screen the terminal) | `f` |
+| Kill the highlighted agent | `Cmd+Backspace` / `Ctrl+Backspace` |
 
 Double-click a card title to rename it. Renames are sticky — AI updates won't overwrite a manual title until you `/clear` the session.
 

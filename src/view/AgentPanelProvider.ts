@@ -103,26 +103,14 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Toast-only turn-complete handler. The activity-bar badge is driven
-   * separately by `unread` events the manager emits whenever any agent's
-   * attentionReason/errorReason changes — no explicit mark-as-read
-   * bookkeeping here.
+   * Turn-complete attention handler. Plays an audible tone in the webview
+   * when the user wasn't actively watching this agent. The activity-bar
+   * badge is updated independently via the manager's `unread` event —
+   * driven by each agent's needsAttention state, not by this handler.
    */
   private handleTurnComplete(snapshot: import('../shared/messages').AgentSnapshot): void {
     if (this.userIsWatching(snapshot.id)) return;
-
-    // Prefer attentionReason (Notification hook) over tldr (Stop hook) —
-    // an "awaiting input" message is more actionable than a turn summary.
-    const detail = snapshot.attentionReason ?? snapshot.tldr;
-    const body = detail
-      ? `${snapshot.name} — ${detail}`
-      : `${snapshot.name} is ready`;
-    // Audible cue paired with the toast — useful when the user is in
-    // another app or another tab and the toast is off-screen.
     this.view?.webview.postMessage({ type: 'playTone' } satisfies HostToWebview);
-    vscode.window.showInformationMessage(body, 'Show').then((picked) => {
-      if (picked === 'Show') this.manager.focusTerminal(snapshot.id);
-    });
   }
 
   /**
@@ -167,6 +155,13 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
         if (this.pendingFocusTerminalId === id) {
           this.pendingFocusTerminalId = null;
         }
+        // Bail if the user has moved on. Without this, pressing `g`
+        // rapidly queues 4 focus-stealing timeouts per spawn — each
+        // one calls setActive + show(false), so the focused card
+        // ping-pongs between agents for ~1.6s and overrides any
+        // manual arrow-key navigation the user attempts in the
+        // meantime.
+        if (this.manager.getActiveId() !== id) return;
         if (this.manager.isAgentTerminalActive(id)) return; // already won
         this.manager.focusTerminal(id);
       }, delay);

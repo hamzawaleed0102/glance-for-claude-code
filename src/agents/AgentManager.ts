@@ -343,6 +343,21 @@ export class AgentManager implements vscode.Disposable {
     }
   }
 
+  /**
+   * Delete the per-agent state file (if any) at `state/<id>.json`.
+   * Called before constructing a brand-new agent on an id that may
+   * have an orphan file from a prior session, so the new agent's
+   * chokidar watcher doesn't seed the card with stale markers.
+   */
+  private wipeStateFile(id: string): void {
+    try {
+      fs.unlinkSync(path.join(this.stateDir, `${id}.json`));
+    } catch {
+      // ENOENT is the common case (no orphan); other errors are
+      // non-fatal — Claude's first update_state will overwrite.
+    }
+  }
+
   /** Common Agent construction wiring used by both `newAgent` and restore. */
   private makeAgent(opts: {
     id: string;
@@ -410,6 +425,16 @@ export class AgentManager implements vscode.Disposable {
 
   newAgent(opts: { cwd: string; model?: ClaudeModel }): string {
     const id = nextAgentId(this.agents.keys());
+    // `nextAgentId` reuses the lowest free slot, so a kill of AG-03
+    // followed by a `g` press lands the next agent back on AG-03 —
+    // which inherits any stale state file at state/AG-03.json (an
+    // orphan from a prior session that never made it into
+    // sessions.json, or a failed earlier purge). The Agent's
+    // chokidar watcher reads that file on attach and seeds the new
+    // card with the previous chat's title/tldr/progress. Wipe it
+    // here so fresh agents start with empty cards regardless of
+    // what was left behind.
+    this.wipeStateFile(id);
     const agent = this.makeAgent({
       id,
       cwd: opts.cwd,
@@ -513,6 +538,13 @@ export class AgentManager implements vscode.Disposable {
    */
   openOldSession(opts: { cwd: string; sessionId: string }): string {
     const id = nextAgentId(this.agents.keys());
+    // Same orphan-state guard as `newAgent` — the chosen id may have
+    // an orphan state file left behind by a prior agent. The picker
+    // seeds the snapshot from the titles archive (by sessionId), but
+    // the state file path is keyed by the new id, so we still need
+    // to wipe whatever sits at state/<id>.json or chokidar's first
+    // read will overwrite the seed with stale markers.
+    this.wipeStateFile(id);
     // Carry the archived title (set by Claude via update_state or by
     // the user via rename) through to the new agent's snapshot so the
     // card opens with the same title the picker displayed, instead of

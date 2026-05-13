@@ -2,7 +2,7 @@
   "name": "glance-claude-code",
   "displayName": "Glance for Claude Code",
   "description": "Multi-session Claude Code agent panel for VS Code.",
-  "version": "0.0.16",
+  "version": "0.0.17",
   "publisher": "hamzawaleed",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -37,9 +37,10 @@
   "scripts": {
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
-    "test": "node --test out/markers/extractMarkers.test.js out/markers/transcriptWatcher.test.js out/agents/sessionScanner.test.js",
+    "test": "node --test out/markers/extractMarkers.test.js out/markers/transcriptWatcher.test.js out/agents/sessionScanner.test.js out/agents/ids.test.js",
     "fix-pty": "node scripts/fix-pty-perms.mjs",
     "postinstall": "node scripts/fix-pty-perms.mjs",
+    "package-platforms": "node scripts/package-platforms.mjs",
     "vscode:prepublish": "pnpm run build"
   },
   "contributes": {

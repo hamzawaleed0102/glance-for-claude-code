@@ -114,6 +114,7 @@ export function AgentCard({
 
   return (
     <div
+      data-agent-id={agent.id}
       className={
         'agent-card' +
         (active ? ' active' : '') +
@@ -164,28 +165,14 @@ export function AgentCard({
         )}
       </div>
 
-      <div className="reveal" data-open={description || agent.skill ? 'true' : 'false'}>
+      <div className="reveal" data-open={description ? 'true' : 'false'}>
         <div className="reveal-inner">
-          {(description || agent.skill) && (
-            <div className="agent-card-subrow">
-              {description ? (
-                <div
-                  className={`agent-card-sub agent-tldr ${descriptionTone}`}
-                  title={description}
-                >
-                  {description}
-                </div>
-              ) : (
-                <span className="agent-card-sub-spacer" />
-              )}
-              {agent.skill && (
-                <span
-                  className="agent-skill-pill"
-                  title={`Skill: ${agent.skill}`}
-                >
-                  {agent.skill}
-                </span>
-              )}
+          {description && (
+            <div
+              className={`agent-card-sub agent-tldr ${descriptionTone}`}
+              title={description}
+            >
+              {description}
             </div>
           )}
         </div>
@@ -210,6 +197,29 @@ export function AgentCard({
                 />
               </div>
               <div className="agent-progress-label">{agent.progress.label}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Skill pill — bottom-right of the card, under the progress bar.
+       *  Renders independently of progress visibility (the active-skill
+       *  marker reflects what kind of work is happening, not step-by-
+       *  step completion). Hidden while the agent is in the starting
+       *  state to avoid overlapping the bottom-right starting indicator. */}
+      <div
+        className="reveal"
+        data-open={agent.skill && !agent.starting ? 'true' : 'false'}
+      >
+        <div className="reveal-inner">
+          {agent.skill && !agent.starting && (
+            <div className="agent-skill-row">
+              <span
+                className="agent-skill-pill"
+                title={`Skill: ${agent.skill}`}
+              >
+                {agent.skill}
+              </span>
             </div>
           )}
         </div>

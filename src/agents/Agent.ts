@@ -168,7 +168,7 @@ export class Agent implements vscode.Disposable {
    * which naturally drops this back to false.
    */
   get needsAttention(): boolean {
-    return this._attentionReason !== null || this._errorReason !== null;
+    return this._attentionReason !== null;
   }
 
   /**
@@ -184,7 +184,7 @@ export class Agent implements vscode.Disposable {
   constructor(init: AgentInit) {
     this.init = init;
     this.id = init.id;
-    this._name = init.initialSnapshot?.name ?? `glance-${init.id.slice(3)}`;
+    this._name = init.initialSnapshot?.name ?? 'Glance';
     this._titleSource = init.initialSnapshot?.titleSource ?? 'default';
     this._model = init.model;
     this.stateFilePath = init.stateFilePath;
@@ -365,7 +365,7 @@ export class Agent implements vscode.Disposable {
    */
   resetCardState(): void {
     const patch: Partial<AgentSnapshot> = {};
-    const defaultName = `glance-${this.id.slice(3)}`;
+    const defaultName = 'Glance';
     if (this._name !== defaultName || this._titleSource !== 'default') {
       this._name = defaultName;
       this._titleSource = 'default';
@@ -519,7 +519,7 @@ export class Agent implements vscode.Disposable {
       // glance-id title". Flip titleSource to 'default' so the AI marker
       // can overwrite it from the next response.
       this._titleSource = 'default';
-      this._name = `glance-${this.id.slice(3)}`;
+      this._name = 'Glance';
     } else {
       this._titleSource = 'manual';
       this._name = capitalizeFirstLetter(trimmed);

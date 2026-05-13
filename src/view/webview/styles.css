@@ -297,16 +297,13 @@ body {
 .agent-tldr.warn { color: var(--warn); font-weight: 500; }
 .agent-tldr.danger { color: var(--danger); font-weight: 500; }
 
-/* TL;DR + skill pill share a row. The pill hugs the right edge and the
- * sub-line takes the remaining width; pill stays on the last visible line
- * thanks to align-items: flex-end. */
-.agent-card-subrow {
+/* Skill pill — bottom-right of the card, beneath the progress bar. The
+ * row uses justify-content: flex-end so the pill hugs the right edge
+ * regardless of its width. */
+.agent-skill-row {
   display: flex;
-  align-items: flex-end;
-  gap: 6px;
+  justify-content: flex-end;
 }
-.agent-card-subrow .agent-card-sub { flex: 1 1 auto; min-width: 0; }
-.agent-card-sub-spacer { flex: 1 1 auto; }
 .agent-skill-pill {
   flex: 0 0 auto;
   font-size: 10px;
@@ -316,7 +313,7 @@ body {
   color: var(--muted);
   letter-spacing: 0.02em;
   white-space: nowrap;
-  max-width: 50%;
+  max-width: 70%;
   overflow: hidden;
   text-overflow: ellipsis;
 }

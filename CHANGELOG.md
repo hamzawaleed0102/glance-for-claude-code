@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.17 — 2026-05-13
+
+- **Fix: focused card no longer ping-pongs after rapid `g` presses.** Each new-agent spawn was scheduling four focus-stealing retries — pressing `g` three times queued twelve setTimeouts that ground the active card around for ~1.6 s and overrode any arrow-key navigation. Retries now bail the moment the user moves on.
+- **Fix: a fresh agent no longer inherits an old chat's title/TL;DR/progress.** `nextAgentId` reuses the lowest free id slot, and the per-agent state file at `state/<id>.json` could outlive the agent that wrote it (orphaned by an earlier kill path). The next agent landing on that id would pick up its predecessor's markers. New agents now wipe the slot before constructing.
+- **New: panel scrolls to bring the new card into view.** Spawning a card in a long list used to drop it off-screen.
+- **New: arrow navigation keeps the active card in view.** Up/Down now scrolls the list when the focused card crosses the viewport edge.
+- **Polish: default card title is `Glance` instead of `glance-XX`.** VS Code disambiguates the terminal tab labels automatically.
+- **Polish: skill pill renders on its own row beneath the progress bar** instead of fighting the TL;DR row for width.
+- **Polish: `update_state` reminder.** The UserPromptSubmit hook now injects a short nudge into the model's silent context so the per-turn card update is harder to forget. Schema already requires all six fields; this just makes the call itself harder to skip.
+
 ## 0.0.7 — 2026-05-12
 
 - **Variable-height cards.** Agent cards no longer have a fixed 86px ceiling. They grow and shrink to fit their content (TL;DR, progress, error / needs-input), and the description and progress rows animate in and out smoothly (220ms grid-rows easing) instead of snapping.

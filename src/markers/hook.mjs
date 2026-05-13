@@ -38,6 +38,16 @@ process.stdin.on('end', () => {
     mkdirSync(eventsDir, { recursive: true });
     writeFileSync(out, JSON.stringify({ agentId, payload }) + '\n');
     log(`wrote ${out}`);
+    // For UserPromptSubmit, stdout text is injected as additional context for
+    // the model (silent — not echoed in the terminal). Use it to nudge the
+    // turn toward calling update_state, since MCP server instructions alone
+    // are demonstrably missable. Schema enforces all 6 fields; this just
+    // makes the call itself harder to skip.
+    if (payload?.hook_event_name === 'UserPromptSubmit') {
+      process.stdout.write(
+        'Glance: end this turn with mcp__glancer__update_state.',
+      );
+    }
   } catch (err) {
     log(`error: ${err instanceof Error ? err.message : String(err)}`);
   }

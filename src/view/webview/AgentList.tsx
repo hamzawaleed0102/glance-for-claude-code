@@ -29,6 +29,8 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
   // (agents added/removed).
   const [localOrder, setLocalOrder] = useState<string[] | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const prevCountRef = useRef(agents.length);
 
   // Drop the local order if it ever diverges from the actual agent set
   // (e.g. an agent was added or removed). The host's order is canonical
@@ -52,6 +54,30 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
   const filtered = filter
     ? orderedAgents.filter((a) => a.name.toLowerCase().includes(lc) || a.id.toLowerCase().includes(lc))
     : orderedAgents;
+
+  // Snap the list to the bottom when the agent count grows so a newly-
+  // spawned card is immediately visible — without this, a long panel
+  // adds the card off-screen and the user has to scroll to find it.
+  // Tracks count only (not identity); shrinks/reorders don't scroll.
+  useEffect(() => {
+    if (agents.length > prevCountRef.current) {
+      const el = listRef.current;
+      if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }
+    prevCountRef.current = agents.length;
+  }, [agents.length]);
+
+  // Keep the active card in view as the user arrow-navigates. `block:
+  // 'nearest'` is a no-op when the card is already visible, so clicks
+  // on a visible card don't trigger any movement; only navigation that
+  // crosses the viewport edge scrolls.
+  useEffect(() => {
+    if (!activeId) return;
+    const el = listRef.current?.querySelector<HTMLElement>(
+      `[data-agent-id="${activeId}"]`,
+    );
+    el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [activeId]);
 
   useEffect(() => {
     const onFocus = () => {
@@ -193,7 +219,7 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
           />
         </div>
       )}
-      <div className="agent-list">
+      <div className="agent-list" ref={listRef}>
         {agents.length === 0 && (
           <div className="agent-empty">
             <span className="faint">no sessions yet</span>

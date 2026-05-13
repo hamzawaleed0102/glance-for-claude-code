@@ -3,6 +3,11 @@ import type { AgentSnapshot, ClaudeModel } from '../../shared/messages';
 import { postToHost } from './api';
 import { AgentCard } from './AgentCard';
 
+// Maximum gap between the two `c` presses of the `c c` chord that runs
+// `/clear` in the active agent's terminal. Matches the feel of similar
+// two-key chords in other tools (e.g. tmux prefix sequences).
+const CC_CHORD_WINDOW_MS = 400;
+
 interface Props {
   agents: AgentSnapshot[];
   activeId: string | null;
@@ -31,6 +36,11 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const prevCountRef = useRef(agents.length);
+  // Timestamp of the most recent unpaired `c` keystroke. A second `c`
+  // within CC_CHORD_WINDOW_MS fires the `/clear` chord. Reset by any
+  // non-plain-`c` key (modifier'd `c` included) so the chord is always
+  // a clean two-keystroke sequence.
+  const lastCRef = useRef<number | null>(null);
 
   // Drop the local order if it ever diverges from the actual agent set
   // (e.g. an agent was added or removed). The host's order is canonical
@@ -98,6 +108,11 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
+    // Any keystroke that isn't a plain `c` cancels a pending chord —
+    // includes Cmd+C / Ctrl+C copy, navigation keys, etc.
+    const isPlainC =
+      e.key === 'c' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+    if (!isPlainC) lastCRef.current = null;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       if (filtered.length === 0) return;
       e.preventDefault();
@@ -127,6 +142,20 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
       // rename input or other child does), so it doesn't eat typed Fs.
       e.preventDefault();
       postToHost({ type: 'toggleMaximizedPanel' });
+    } else if (isPlainC) {
+      // `c c` chord — second `c` within CC_CHORD_WINDOW_MS runs Claude's
+      // `/clear` slash command in the active agent's terminal and pulls
+      // focus into it. First `c` just arms the chord.
+      if (!activeId) return;
+      e.preventDefault();
+      const now = Date.now();
+      const last = lastCRef.current;
+      if (last !== null && now - last < CC_CHORD_WINDOW_MS) {
+        postToHost({ type: 'clearActive' });
+        lastCRef.current = null;
+      } else {
+        lastCRef.current = now;
+      }
     } else if (e.key === 'Escape') {
       e.preventDefault();
       containerRef.current?.blur();

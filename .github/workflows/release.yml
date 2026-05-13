@@ -1,0 +1,88 @@
+name: Build VSIX artifacts
+
+# Build per-platform .vsix files for every target we support. Triggered
+# manually (workflow_dispatch) or by pushing a `v*` tag. Does NOT publish
+# to the VS Code Marketplace — that's a deliberate, manual step (see the
+# `feedback_publish_consent` memory). Download the produced artifacts
+# from the workflow run, inspect them, then publish with
+# `npx @vscode/vsce publish --packagePath dist/<name>-<target>.vsix`.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  package:
+    name: ${{ matrix.target }}
+    strategy:
+      # Keep going on per-platform failures so a single broken runner
+      # doesn't hide success on the others.
+      fail-fast: false
+      matrix:
+        include:
+          # macOS — Apple Silicon (M-series). macos-latest is arm64.
+          - os: macos-latest
+            target: darwin-arm64
+          # macOS Intel — still pinned at macos-13 (the last GitHub-
+          # provided x64 image). Newer macos-* labels are arm64-only.
+          - os: macos-13
+            target: darwin-x64
+          # Linux x64 — node-pty has no prebuild for linux, so
+          # pnpm install compiles it from source on this runner. The
+          # resulting binary lands in node_modules/node-pty/prebuilds/
+          # linux-x64/ and gets packed into the .vsix.
+          - os: ubuntu-latest
+            target: linux-x64
+          # Linux arm64 — same compile-from-source path. Public GitHub-
+          # hosted ARM runner; free on public repos.
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+          # Windows x64 — uses node-pty's bundled win32-x64 prebuild.
+          - os: windows-latest
+            target: win32-x64
+          # Windows ARM — uses bundled win32-arm64 prebuild. Public
+          # GitHub-hosted ARM runner; free on public repos.
+          - os: windows-11-arm
+            target: win32-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        # --frozen-lockfile so CI never silently bumps a dep version.
+        # Postinstall runs scripts/fix-pty-perms.mjs which chmod+x's
+        # node-pty's spawn-helper — required for the .vsix to install
+        # cleanly on macOS (hardened runtime won't posix_spawnp a
+        # non-executable file).
+        run: pnpm install --frozen-lockfile
+
+      - name: Build VSIX
+        shell: bash
+        # The script handles stripping other-platform prebuilds + .pdb
+        # files. On Linux runners, node-pty was just compiled from
+        # source so its prebuilds/linux-{x64,arm64}/ dir is the only
+        # native binary present — the script's "move other platforms
+        # aside" step still runs but is essentially a no-op there.
+        run: node scripts/package-platforms.mjs ${{ matrix.target }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: glance-${{ matrix.target }}
+          path: dist/*.vsix
+          if-no-files-found: error
+          retention-days: 30

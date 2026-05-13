@@ -276,6 +276,9 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
       case 'toggleMaximizedPanel':
         void vscode.commands.executeCommand('workbench.action.toggleMaximizedPanel');
         break;
+      case 'clearActive':
+        this.manager.clearActive();
+        break;
     }
   }
 

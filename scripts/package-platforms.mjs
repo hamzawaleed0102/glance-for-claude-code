@@ -33,7 +33,15 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 
-const targets = ['darwin-arm64', 'darwin-x64', 'win32-arm64', 'win32-x64'];
+// Default target list — used when no CLI args are given (local dev:
+// `pnpm run package-platforms` builds all four Mac/Windows variants
+// against the prebuilds shipped in the npm tarball). CI passes a
+// single explicit target per matrix job:
+// `node scripts/package-platforms.mjs linux-x64`.
+const DEFAULT_TARGETS = ['darwin-arm64', 'darwin-x64', 'win32-arm64', 'win32-x64'];
+const cliTargets = process.argv.slice(2);
+const targets = cliTargets.length > 0 ? cliTargets : DEFAULT_TARGETS;
+const isExplicit = cliTargets.length > 0;
 
 const distDir = 'dist';
 const prebuildsDir = 'node_modules/node-pty/prebuilds';
@@ -124,7 +132,15 @@ function moveAside(target) {
 try {
   for (const target of targets) {
     if (!allPrebuilds.includes(target)) {
-      console.warn(`! Skipping ${target}: no matching prebuild in ${prebuildsDir}`);
+      const msg = `${target}: no matching prebuild in ${prebuildsDir} (available: ${allPrebuilds.join(', ') || 'none'})`;
+      if (isExplicit) {
+        // Explicitly requested (CI). Treat as a hard failure so the
+        // workflow surfaces the problem instead of producing a broken
+        // .vsix that ships an empty prebuild dir.
+        console.error(`! ${msg}`);
+        process.exit(1);
+      }
+      console.warn(`! Skipping ${msg}`);
       continue;
     }
 

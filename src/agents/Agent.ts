@@ -548,6 +548,21 @@ export class Agent implements vscode.Disposable {
     this.terminal?.show(false);
   }
 
+  /**
+   * Send Claude's `/clear` slash command into the terminal, then pull
+   * keyboard focus into it so the user lands ready to type. Wired to
+   * the `c c` chord on the focused agent panel.
+   *
+   * `Terminal.sendText` calls our pseudoterminal's `handleInput`, which
+   * forwards to node-pty's `write` — Claude sees `/clear<Enter>` exactly
+   * as if the user typed it. SessionStart with `source='clear'` fires
+   * from Claude's side and `resetCardState` runs the usual way.
+   */
+  clearConversation(): void {
+    this.focusTerminal();
+    this.terminal?.sendText('/clear');
+  }
+
   snapshot(): AgentSnapshot {
     return {
       id: this.id,

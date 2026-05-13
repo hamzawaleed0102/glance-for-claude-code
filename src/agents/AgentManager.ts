@@ -37,16 +37,23 @@ export class AgentManager implements vscode.Disposable {
   private readonly hookSettingsPath: string;
   private readonly mcpConfigPath: string;
   private readonly instructionsPath: string;
-  private readonly sessionsFile: string;
   /**
-   * Persistent archive of session titles, keyed by Claude sessionId.
+   * Path to the per-workspace sessions.json (the list of session IDs the
+   * user has surfaced as cards in this window). Null when no workspace
+   * folder is open — the extension still loads but can't persist
+   * anything because there's nowhere workspace-scoped to write to.
+   */
+  private readonly sessionsFile: string | null;
+  /**
+   * Per-workspace archive of session titles, keyed by Claude sessionId.
    * Survives card kills (unlike sessions.json, which only carries
    * entries for currently-tracked agents). Populated from every
    * onMetaChange when titleSource is non-default; consulted by the
    * old-sessions picker so closed cards still surface with their
-   * AI/manual title instead of falling back to firstPrompt.
+   * AI/manual title instead of falling back to firstPrompt. Null when
+   * no workspace folder is open.
    */
-  private readonly titlesFile: string;
+  private readonly titlesFile: string | null;
   private readonly eventsWatcher: FSWatcher;
   /**
    * VS Code's onDidChangeActiveTerminal subscription — mirrors the active
@@ -176,11 +183,30 @@ export class AgentManager implements vscode.Disposable {
       console.error('[glancer] events watcher error', err);
     });
 
-    // Sessions persistence: array of dormant-agent metadata that survives
-    // across VS Code launches. The marker state (tldr/progress/etc.) lives
-    // alongside in `state/<id>.json` files written by Claude via MCP.
-    this.sessionsFile = path.join(this.storageDir, 'sessions.json');
-    this.titlesFile = path.join(this.storageDir, 'session-titles.json');
+    // Sessions + titles persistence — workspace-scoped, NOT global. Each
+    // VS Code window writes its sessions.json into the workspace's
+    // dedicated storage dir (`context.storageUri`), so two windows on
+    // different projects never collide. Falls back to globalStorage only
+    // for the "no workspace folder open" case (we can't persist anywhere
+    // sensible without a workspace, so we just no-op).
+    //
+    // Source of truth for "what sessions exist on this machine" remains
+    // Claude Code's own `~/.claude/projects/<encoded-cwd>/*.jsonl`. Our
+    // sessions.json is just the list of session IDs the user has chosen
+    // to surface as cards in *this* window — kill drops one, opening a
+    // past chat via the picker adds one. Other sessions stay on disk
+    // and remain discoverable through the picker.
+    const wsStorageDir = init.context.storageUri?.fsPath ?? null;
+    if (wsStorageDir) {
+      fs.mkdirSync(wsStorageDir, { recursive: true });
+      this.sessionsFile = path.join(wsStorageDir, 'sessions.json');
+      this.titlesFile = path.join(wsStorageDir, 'session-titles.json');
+      this.maybeMigrateGlobalSessions();
+      this.maybeMigrateGlobalTitles();
+    } else {
+      this.sessionsFile = null;
+      this.titlesFile = null;
+    }
     this.restorePersistedAgents();
 
     // Keep the sidebar's active card in sync with VS Code's active terminal.
@@ -228,7 +254,77 @@ export class AgentManager implements vscode.Disposable {
    * snapshot; the PTY isn't spawned until the user clicks the card (which
    * calls reveal() → revive() and starts claude with `--resume <id>`).
    */
+  /**
+   * Set of cwds (workspace folder fsPaths) for THIS VS Code window.
+   * Used by the one-shot migration helper to pick out entries belonging
+   * to this workspace from the legacy global sessions.json.
+   */
+  private currentWorkspaceCwds(): Set<string> {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    return new Set(folders.map((f) => f.uri.fsPath));
+  }
+
+  /**
+   * One-shot migration from the legacy globalStorage/sessions.json (which
+   * mixed agents from every workspace together and was the source of
+   * cross-workspace pollution) into per-workspace sessions.json. Only
+   * runs when the workspace sessions.json doesn't yet exist; subsequent
+   * launches use the workspace file directly. The legacy global file is
+   * intentionally left in place so OTHER workspaces can still migrate
+   * their own entries the first time they open under the new code.
+   */
+  private maybeMigrateGlobalSessions(): void {
+    if (!this.sessionsFile) return;
+    if (fs.existsSync(this.sessionsFile)) return;
+    const legacyPath = path.join(this.storageDir, 'sessions.json');
+    let raw: string;
+    try {
+      raw = fs.readFileSync(legacyPath, 'utf8');
+    } catch {
+      return;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (!Array.isArray(parsed)) return;
+    const ourCwds = this.currentWorkspaceCwds();
+    const ours = (parsed as Array<{ cwd?: unknown }>).filter(
+      (e) => e && typeof e.cwd === 'string' && ourCwds.has(e.cwd),
+    );
+    try {
+      fs.writeFileSync(this.sessionsFile, JSON.stringify(ours, null, 2));
+    } catch (err) {
+      console.warn('[glancer] sessions migration failed:', err);
+    }
+  }
+
+  /**
+   * Companion to maybeMigrateGlobalSessions for the titles archive. Titles
+   * are keyed by Claude sessionId (not cwd), so we copy the whole file
+   * verbatim — same titles file ends up in every workspace's storage,
+   * but the picker filters by cwd at read time so only the relevant
+   * titles are surfaced. Without this migration, opening a previously-
+   * known session via the picker shows "Glance" instead of the archived
+   * title, because workspace-scoped readSessionTitles() finds an empty
+   * file even though globalStorage/session-titles.json is populated.
+   */
+  private maybeMigrateGlobalTitles(): void {
+    if (!this.titlesFile) return;
+    if (fs.existsSync(this.titlesFile)) return;
+    const legacyPath = path.join(this.storageDir, 'session-titles.json');
+    if (!fs.existsSync(legacyPath)) return;
+    try {
+      fs.copyFileSync(legacyPath, this.titlesFile);
+    } catch (err) {
+      console.warn('[glancer] titles migration failed:', err);
+    }
+  }
+
   private restorePersistedAgents(): void {
+    if (!this.sessionsFile) return;
     let raw: string;
     try {
       raw = fs.readFileSync(this.sessionsFile, 'utf8');
@@ -320,11 +416,17 @@ export class AgentManager implements vscode.Disposable {
    * NOT in this file — they live in each agent's state/<id>.json.
    */
   private persist(): void {
+    if (!this.sessionsFile) return;
     // Only persist agents the user has actually chatted with. Empty sessions
     // (auto-spawned card, no UserPromptSubmit yet) have a sessionId from
     // SessionStart but no JSONL on disk — `claude --resume <id>` fails on
     // those with "No conversation found with session ID". Filtering them
     // out keeps the restore path clean.
+    //
+    // Workspace-scoped storage means this file only ever contains this
+    // window's agents — no cross-workspace merge logic, no clobber
+    // protection needed. Two windows on the SAME workspace still share
+    // the file, but they're showing the same agent set anyway.
     const entries = Array.from(this.agents.values())
       .filter((a) => a.hasUserPrompt)
       .map((a) => ({
@@ -355,6 +457,70 @@ export class AgentManager implements vscode.Disposable {
     } catch {
       // ENOENT is the common case (no orphan); other errors are
       // non-fatal — Claude's first update_state will overwrite.
+    }
+  }
+
+  /** Directory holding state snapshots keyed by Claude sessionId — used
+   * to preserve `tldr`/`progress`/`skill`/etc. across kill→reopen. State
+   * files in `stateDir` itself are keyed by glance agent id (Claude's
+   * MCP server writes there via the GLANCER_STATE_FILE env), but agent
+   * ids are reassigned on every reopen, so we promote the file to a
+   * sessionId-keyed slot whenever a card with a sessionId is killed. */
+  private archiveDir(): string {
+    return path.join(this.stateDir, 'by-session');
+  }
+
+  /**
+   * Move the just-killed agent's state file into the by-session archive
+   * so a future `openOldSession` can seed the new card from it. No-op
+   * if the agent never got a sessionId (killed before SessionStart) or
+   * the source file is already gone.
+   */
+  private archiveStateOnKill(agent: Agent): void {
+    if (!agent.sessionId) return;
+    const src = path.join(this.stateDir, `${agent.id}.json`);
+    if (!fs.existsSync(src)) return;
+    const dst = path.join(this.archiveDir(), `${agent.sessionId}.json`);
+    try {
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      // Use rename for atomicity — if it fails (e.g. cross-device on
+      // some configs), fall back to copy+unlink so we don't leave the
+      // file behind to confuse a future agent that grabs this id.
+      fs.renameSync(src, dst);
+    } catch (err) {
+      console.warn('[glancer] state archive failed, falling back to copy:', err);
+      try {
+        fs.copyFileSync(src, dst);
+        fs.unlinkSync(src);
+      } catch (err2) {
+        console.warn('[glancer] state archive fallback failed:', err2);
+      }
+    }
+  }
+
+  /**
+   * Pre-seed a fresh agent's state file from the by-session archive if
+   * we have an entry for `sessionId`. Called by `openOldSession` after
+   * `wipeStateFile` but before `makeAgent`, so the new agent's chokidar
+   * watcher sees a populated file on its first poll and emits a
+   * restored snapshot instead of the empty default. The archive entry
+   * is consumed (moved) — if this card is later killed, it'll be re-
+   * archived from the new id's path.
+   */
+  private restoreArchivedState(newAgentId: string, sessionId: string): void {
+    const src = path.join(this.archiveDir(), `${sessionId}.json`);
+    if (!fs.existsSync(src)) return;
+    const dst = path.join(this.stateDir, `${newAgentId}.json`);
+    try {
+      fs.renameSync(src, dst);
+    } catch (err) {
+      console.warn('[glancer] state restore failed, falling back to copy:', err);
+      try {
+        fs.copyFileSync(src, dst);
+        fs.unlinkSync(src);
+      } catch (err2) {
+        console.warn('[glancer] state restore fallback failed:', err2);
+      }
     }
   }
 
@@ -456,6 +622,7 @@ export class AgentManager implements vscode.Disposable {
    */
   private readSessionTitles(): Map<string, { name: string; titleSource: TitleSource }> {
     const map = new Map<string, { name: string; titleSource: TitleSource }>();
+    if (!this.titlesFile) return map;
     try {
       const raw = fs.readFileSync(this.titlesFile, 'utf8');
       const data: unknown = JSON.parse(raw);
@@ -496,6 +663,7 @@ export class AgentManager implements vscode.Disposable {
     titleSource: TitleSource,
   ): void {
     if (titleSource === 'default') return;
+    if (!this.titlesFile) return;
     const map = this.readSessionTitles();
     map.set(sessionId, { name, titleSource });
     const obj: Record<string, { name: string; titleSource: TitleSource }> = {};
@@ -545,6 +713,15 @@ export class AgentManager implements vscode.Disposable {
     // to wipe whatever sits at state/<id>.json or chokidar's first
     // read will overwrite the seed with stale markers.
     this.wipeStateFile(id);
+    // Restore the previous card's markers (tldr / progress / skill /
+    // needsInput / error) by moving the by-session archive into the new
+    // agent's state slot. chokidar's first poll on the constructor's
+    // watcher will then emit a populated snapshot instead of the empty
+    // default. Title is handled separately just below via the titles
+    // archive — they're stored in different files because titles need
+    // to survive even when the user opens an old session that was
+    // killed before any state file was ever written.
+    this.restoreArchivedState(id, opts.sessionId);
     // Carry the archived title (set by Claude via update_state or by
     // the user via rename) through to the new agent's snapshot so the
     // card opens with the same title the picker displayed, instead of
@@ -591,8 +768,13 @@ export class AgentManager implements vscode.Disposable {
       this.setActive(next);
     }
     a.dispose();
-    // User-initiated removal: also drop the persisted state file so a future
-    // agent with the same id (very unlikely) doesn't pick up stale markers.
+    // Promote the state file into the by-session archive (keyed by the
+    // Claude sessionId) so a future openOldSession can re-seed a new
+    // card with the previous tldr/progress/skill. If there's no
+    // sessionId yet (kill happened before SessionStart), fall through
+    // to the unconditional delete so we don't strand an orphan file
+    // under the same glance id.
+    this.archiveStateOnKill(a);
     a.purgePersistentState();
     this.persist();
     // Always recompute — even if this agent wasn't in attention, closing
@@ -620,6 +802,16 @@ export class AgentManager implements vscode.Disposable {
     if (!a) return;
     this.setActive(id);
     a.focusTerminal();
+  }
+
+  /**
+   * Run `/clear` in the currently selected agent's terminal and focus it.
+   * Wired to the `c c` chord on the focused agent panel. No-op when there
+   * is no selected agent (fresh session, empty list).
+   */
+  clearActive(): void {
+    if (!this.activeId) return;
+    this.agents.get(this.activeId)?.clearConversation();
   }
 
   /** True if the agent's terminal is the currently active VS Code terminal. */

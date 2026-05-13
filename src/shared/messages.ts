@@ -115,4 +115,11 @@ export type WebviewToHost =
    * VS Code bottom panel between maximized and unmaximized so the
    * terminal can take the whole window for reading + leaving easily.
    */
-  | { type: 'toggleMaximizedPanel' };
+  | { type: 'toggleMaximizedPanel' }
+  /**
+   * User pressed `c c` (within ~400 ms) on the focused agent panel.
+   * Host runs Claude's `/clear` slash command in the currently
+   * selected agent's terminal AND pulls focus into that terminal
+   * so the user lands ready to type the next prompt.
+   */
+  | { type: 'clearActive' };

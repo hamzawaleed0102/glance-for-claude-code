@@ -93,6 +93,14 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
       // chord — first press focuses the panel, second `g` opens a session).
       e.preventDefault();
       postToHost({ type: 'newAgent' });
+    } else if (e.key === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      // Plain `f` toggles the bottom panel maximize state — handy for
+      // pulling the active terminal full-screen and dropping back. The
+      // guard `e.target !== e.currentTarget` at the top means this only
+      // fires when the panel container itself owns focus (not when a
+      // rename input or other child does), so it doesn't eat typed Fs.
+      e.preventDefault();
+      postToHost({ type: 'toggleMaximizedPanel' });
     } else if (e.key === 'Escape') {
       e.preventDefault();
       containerRef.current?.blur();

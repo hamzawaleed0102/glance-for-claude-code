@@ -102,4 +102,10 @@ export type WebviewToHost =
    * User picked a session in the picker. Host spawns a new agent card
    * with `claude --resume <sessionId>` using the same cwd as `newAgent`.
    */
-  | { type: 'openOldSession'; sessionId: string };
+  | { type: 'openOldSession'; sessionId: string }
+  /**
+   * User pressed `f` on a focused agent panel. Host toggles the
+   * VS Code bottom panel between maximized and unmaximized so the
+   * terminal can take the whole window for reading + leaving easily.
+   */
+  | { type: 'toggleMaximizedPanel' };

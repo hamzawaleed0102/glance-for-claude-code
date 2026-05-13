@@ -278,6 +278,9 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
         this.scheduleFocusRetries(id);
         break;
       }
+      case 'toggleMaximizedPanel':
+        void vscode.commands.executeCommand('workbench.action.toggleMaximizedPanel');
+        break;
     }
   }
 

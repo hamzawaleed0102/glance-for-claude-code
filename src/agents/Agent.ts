@@ -555,12 +555,20 @@ export class Agent implements vscode.Disposable {
    *
    * `Terminal.sendText` calls our pseudoterminal's `handleInput`, which
    * forwards to node-pty's `write` — Claude sees `/clear<Enter>` exactly
-   * as if the user typed it. SessionStart with `source='clear'` fires
-   * from Claude's side and `resetCardState` runs the usual way.
+   * as if the user typed it.
+   *
+   * We also call `resetCardState` directly here instead of waiting for
+   * Claude's `SessionStart` hook to round-trip — we know /clear is
+   * about to run because we're the ones sending it, so reset the card
+   * synchronously. The hook-based reset still covers the case where
+   * the user types /clear directly in the terminal (no chord); both
+   * paths are idempotent because `resetCardState` only emits when
+   * fields actually changed.
    */
   clearConversation(): void {
     this.focusTerminal();
     this.terminal?.sendText('/clear');
+    this.resetCardState();
   }
 
   snapshot(): AgentSnapshot {

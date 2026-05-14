@@ -54,11 +54,18 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
   }, [agents, localOrder]);
 
   // Apply the local order if active; otherwise use the props' order.
-  const orderedAgents = localOrder
+  // Then enforce pinned-first as a stable sort on top — mirrors the
+  // host's invariant so toggling pin updates the order even while
+  // localOrder (drag optimism) is still held. Stable sort means
+  // within-section order from the chosen base is preserved.
+  const baseOrder = localOrder
     ? localOrder
         .map((id) => agents.find((a) => a.id === id))
         .filter((a): a is AgentSnapshot => !!a)
     : agents;
+  const orderedAgents = [...baseOrder].sort(
+    (a, b) => Number(b.pinned) - Number(a.pinned),
+  );
 
   const lc = filter.toLowerCase();
   const filtered = filter

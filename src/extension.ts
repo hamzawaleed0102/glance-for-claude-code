@@ -62,6 +62,11 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
+  // Order matters: flip the shutdown flag BEFORE disposing. VS Code fires
+  // onDidClose on every terminal as the host tears down — without the flag
+  // those would route through AgentManager's onUserClose handler into
+  // kill(id), wiping sessions.json on every Cmd+R.
+  manager?.markShuttingDown();
   manager?.dispose();
   manager = null;
 }

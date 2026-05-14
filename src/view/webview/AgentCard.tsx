@@ -143,6 +143,7 @@ export function AgentCard({
         (agent.starting ? ' starting' : '') +
         (dragging ? ' dragging' : '') +
         (dragOver ? ' drag-over' : '') +
+        (agent.pinned ? ' pinned' : '') +
         ` status-${status}`
       }
       // Only draggable when not editing the rename input; otherwise the
@@ -260,24 +261,52 @@ export function AgentCard({
         </div>
       )}
 
-      <button
-        className="agent-kill"
-        title="Close session"
-        aria-label="Close session"
-        onClick={(e) => { e.stopPropagation(); onKill(); }}
-      >
-        <svg
-          viewBox="0 0 12 12"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
+      {agent.pinned ? (
+        <button
+          className="agent-kill pinned"
+          title="Unpin"
+          aria-label="Unpin session"
+          onClick={(e) => {
+            e.stopPropagation();
+            postToHost({ type: 'togglePin', id: agent.id });
+          }}
         >
-          <line x1="3" y1="3" x2="9" y2="9" />
-          <line x1="9" y1="3" x2="3" y2="9" />
-        </svg>
-      </button>
+          {/* Pin glyph — stroked, matches the X button's 12-unit viewBox
+              so positioning and stroke weight align with the unpinned state. */}
+          <svg
+            viewBox="0 0 12 12"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M6 1.5 L8.5 4 L7.5 5 L4.5 5 L3.5 4 Z" />
+            <line x1="6" y1="5" x2="6" y2="9.5" />
+            <line x1="4" y1="9.5" x2="8" y2="9.5" />
+          </svg>
+        </button>
+      ) : (
+        <button
+          className="agent-kill"
+          title="Close session"
+          aria-label="Close session"
+          onClick={(e) => { e.stopPropagation(); onKill(); }}
+        >
+          <svg
+            viewBox="0 0 12 12"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          >
+            <line x1="3" y1="3" x2="9" y2="9" />
+            <line x1="9" y1="3" x2="3" y2="9" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }

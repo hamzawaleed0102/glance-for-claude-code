@@ -70,14 +70,28 @@ export class AgentManager implements vscode.Disposable {
     this.storageDir = init.context.globalStorageUri.fsPath;
     fs.mkdirSync(this.storageDir, { recursive: true });
 
-    this.eventsDir = path.join(this.storageDir, 'events');
+    // Workspace-scoped data dirs — events and state files are keyed by
+    // short agent IDs (AG-01, AG-02, ...). Two VS Code windows each
+    // number their own agents starting at AG-01, so if these dirs lived
+    // in globalStorage they'd collide: Window 2's brand-new AG-01 would
+    // write into the same state file Window 1's AG-01 watches, and the
+    // card snapshots would swap across windows. Workspace-scoping fixes
+    // that by giving every workspace its own state/ and events/ tree.
+    // Binaries (hook.mjs / mcp-server.mjs / glancer-instructions.txt /
+    // hook-settings.json / mcp-config.json) stay global — they're
+    // install-once and don't carry per-agent state.
+    const wsStorageDir = init.context.storageUri?.fsPath ?? null;
+    const dataDir = wsStorageDir ?? this.storageDir;
+    if (wsStorageDir) fs.mkdirSync(wsStorageDir, { recursive: true });
+
+    this.eventsDir = path.join(dataDir, 'events');
     fs.mkdirSync(this.eventsDir, { recursive: true });
 
     // Per-agent JSON status files live here. Claude is instructed (via the
     // system prompt) to overwrite its file with `{title, tldr, progress,
     // needsInput, error}` after every response; each agent watches its own
     // file and routes the fields into the snapshot.
-    this.stateDir = path.join(this.storageDir, 'state');
+    this.stateDir = path.join(dataDir, 'state');
     fs.mkdirSync(this.stateDir, { recursive: true });
 
     // Copy the hook and MCP server scripts to storageDir so they have stable
@@ -183,26 +197,20 @@ export class AgentManager implements vscode.Disposable {
       console.error('[glancer] events watcher error', err);
     });
 
-    // Sessions + titles persistence — workspace-scoped, NOT global. Each
-    // VS Code window writes its sessions.json into the workspace's
-    // dedicated storage dir (`context.storageUri`), so two windows on
-    // different projects never collide. Falls back to globalStorage only
-    // for the "no workspace folder open" case (we can't persist anywhere
-    // sensible without a workspace, so we just no-op).
-    //
-    // Source of truth for "what sessions exist on this machine" remains
-    // Claude Code's own `~/.claude/projects/<encoded-cwd>/*.jsonl`. Our
-    // sessions.json is just the list of session IDs the user has chosen
-    // to surface as cards in *this* window — kill drops one, opening a
-    // past chat via the picker adds one. Other sessions stay on disk
-    // and remain discoverable through the picker.
-    const wsStorageDir = init.context.storageUri?.fsPath ?? null;
+    // Sessions + titles persistence — workspace-scoped (same wsStorageDir
+    // computed above). Source of truth for "what sessions exist on this
+    // machine" remains Claude Code's own
+    // `~/.claude/projects/<encoded-cwd>/*.jsonl`. Our sessions.json is
+    // just the list of session IDs the user has chosen to surface as
+    // cards in *this* window — kill drops one, opening a past chat via
+    // the picker adds one. Other sessions stay on disk and remain
+    // discoverable through the picker.
     if (wsStorageDir) {
-      fs.mkdirSync(wsStorageDir, { recursive: true });
       this.sessionsFile = path.join(wsStorageDir, 'sessions.json');
       this.titlesFile = path.join(wsStorageDir, 'session-titles.json');
       this.maybeMigrateGlobalSessions();
       this.maybeMigrateGlobalTitles();
+      this.maybeMigrateGlobalState();
     } else {
       this.sessionsFile = null;
       this.titlesFile = null;
@@ -311,6 +319,85 @@ export class AgentManager implements vscode.Disposable {
    * title, because workspace-scoped readSessionTitles() finds an empty
    * file even though globalStorage/session-titles.json is populated.
    */
+  /**
+   * Move per-agent state files from globalStorage to the workspace-scoped
+   * state dir on first launch under the new code. Without this, the
+   * just-restored dormant agents would point their stateFilePath at the
+   * empty workspace dir and lose their last-known tldr/progress/skill
+   * snapshots until the next user prompt repopulates them.
+   *
+   * Only migrates entries we can trace to this workspace — IDs listed in
+   * the workspace sessions.json (live cards) and sessionIds listed in
+   * the workspace session-titles.json (covers killed sessions that
+   * still have a by-session archive worth preserving). Other workspaces'
+   * state files stay at the global path so their own migrations can
+   * pick them up.
+   */
+  private maybeMigrateGlobalState(): void {
+    if (!this.sessionsFile) return;
+    const legacyStateDir = path.join(this.storageDir, 'state');
+    if (!fs.existsSync(legacyStateDir)) return;
+    if (legacyStateDir === this.stateDir) return; // same dir, nothing to do
+
+    // Live state files: state/<agentId>.json for every agent in sessions.json.
+    let sessionEntries: unknown = [];
+    try {
+      sessionEntries = JSON.parse(fs.readFileSync(this.sessionsFile, 'utf8'));
+    } catch {
+      // sessions.json may be missing on a brand-new workspace — fine,
+      // there's nothing to migrate then.
+    }
+    if (Array.isArray(sessionEntries)) {
+      for (const e of sessionEntries as Array<{ id?: unknown }>) {
+        if (!e || typeof e.id !== 'string') continue;
+        const src = path.join(legacyStateDir, `${e.id}.json`);
+        const dst = path.join(this.stateDir, `${e.id}.json`);
+        if (fs.existsSync(dst)) continue; // already migrated
+        if (!fs.existsSync(src)) continue;
+        try {
+          fs.copyFileSync(src, dst);
+        } catch (err) {
+          console.warn('[glancer] state file migration failed for', e.id, err);
+        }
+      }
+    }
+
+    // By-session archive: state/by-session/<sessionId>.json for every
+    // sessionId in titles.json. Lets restoreArchivedState (called from
+    // openOldSession) seed a re-opened card with the previous turn's
+    // markers even if the kill happened before this update.
+    if (this.titlesFile && fs.existsSync(this.titlesFile)) {
+      let titles: unknown = {};
+      try {
+        titles = JSON.parse(fs.readFileSync(this.titlesFile, 'utf8'));
+      } catch {
+        // fall through
+      }
+      if (titles && typeof titles === 'object' && !Array.isArray(titles)) {
+        const legacyArchiveDir = path.join(legacyStateDir, 'by-session');
+        const wsArchiveDir = path.join(this.stateDir, 'by-session');
+        if (fs.existsSync(legacyArchiveDir)) {
+          for (const sessionId of Object.keys(titles as Record<string, unknown>)) {
+            const src = path.join(legacyArchiveDir, `${sessionId}.json`);
+            const dst = path.join(wsArchiveDir, `${sessionId}.json`);
+            if (fs.existsSync(dst)) continue;
+            if (!fs.existsSync(src)) continue;
+            try {
+              fs.mkdirSync(wsArchiveDir, { recursive: true });
+              fs.copyFileSync(src, dst);
+            } catch (err) {
+              console.warn(
+                '[glancer] by-session archive migration failed for',
+                sessionId,
+                err,
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+
   private maybeMigrateGlobalTitles(): void {
     if (!this.titlesFile) return;
     if (fs.existsSync(this.titlesFile)) return;

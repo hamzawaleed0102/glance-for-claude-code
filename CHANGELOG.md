@@ -1,8 +1,9 @@
 # Changelog
 
-## 0.0.X — YYYY-MM-DD
+## 0.0.24 — 2026-05-15
 
 - **New: pin agent cards.** Press `p` twice within 400 ms with a card focused to pin it. Pinned cards animate to the top of the list (FIFO), refuse `Cmd+Backspace` / X deletion, and persist across reloads. Press `p p` again or click the pin icon to unpin. `/clear` still works on pinned cards. Reorders use a FLIP-based slide so cards smoothly move into place instead of snapping.
+- **New: closing a terminal from the VS Code panel kills the agent card.** Clicking the trash/X on a Glance terminal in VS Code's bottom panel now removes the corresponding card — matching what the in-sidebar trash button does, instead of leaving an orphan dormant entry. Cmd+R reload and full window-quit are filtered out so they still leave cards dormant for next launch.
 
 ## 0.0.17 — 2026-05-13
 

@@ -49,6 +49,17 @@ export function summarySystemPrompt(_stateFilePath: string): string {
     'end the turn normally. Without this opening call the user sees a ' +
     'generic streaming indicator instead of confirmation you registered ' +
     'their answer.\n\n' +
+    'ASK-BEFORE — set needsInput before any question.\n' +
+    'If your reply will end with a question for the user (yes/no, value, ' +
+    'path, pick between options, confirmation before destructive work), ' +
+    'your LAST tool call before that prose MUST be `update_state` with ' +
+    '`needsInput` set to a short clause naming what you need ("Need: which ' +
+    'env to target", "Confirm overwriting dist/"). This applies to ANY ' +
+    'turn that ends awaiting an answer — clarifying-questions turns, ' +
+    'mid-implementation pauses, plan approvals, all of them. The card\'s ' +
+    'needsInput badge + attention toast is the only signal the user sees ' +
+    'when they aren\'t watching the terminal; ending a turn on a question ' +
+    'without it strands them waiting.\n\n' +
     'SIDE CHANNEL — call it even when the user forbids output.\n' +
     '`update_state` is NOT part of your visible response — the user does ' +
     'not see the call. So when the user says "don\'t write anything yet", ' +
@@ -67,8 +78,12 @@ export function summarySystemPrompt(_stateFilePath: string): string {
     '  - Drop emphasis markers (ALL CAPS, "!", "PLEASE") when deriving — ' +
     'those reflect mood, not style.\n' +
     'Set the title on the FIRST call and pass the SAME STRING on every ' +
-    'subsequent call. Do not rewrite it as the topic drifts — the title ' +
-    'reflects the session, not the current message. Never null after set.\n\n' +
+    'subsequent call — NEVER rewrite it. The only exception: the user ' +
+    'completely abandons the original task and pivots the session to an ' +
+    'unrelated topic (e.g. was "fix auth bug", user now says "forget that, ' +
+    'help me write release notes"). Topic drift, follow-ups, tangents, ' +
+    'and refinements of the original ask do NOT qualify — keep the title. ' +
+    'When in doubt, keep it. Never null after set.\n\n' +
     '`tldr` — fresh one-sentence speakable summary on every call. Plain ' +
     'prose, no code/markdown/quotes, ≤15 spoken seconds. Even tool-only ' +
     'turns describe what you just attempted. Always non-empty.\n' +

@@ -37,7 +37,7 @@
   "scripts": {
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
-    "test": "node --test out/markers/extractMarkers.test.js out/markers/transcriptWatcher.test.js out/agents/sessionScanner.test.js out/agents/ids.test.js",
+    "test": "node --test out/markers/extractMarkers.test.js out/markers/transcriptWatcher.test.js out/agents/sessionScanner.test.js out/agents/ids.test.js out/agents/pinSort.test.js",
     "fix-pty": "node scripts/fix-pty-perms.mjs",
     "postinstall": "node scripts/fix-pty-perms.mjs",
     "package-platforms": "node scripts/package-platforms.mjs",

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.X — YYYY-MM-DD
+
+- **New: pin agent cards.** Press `p` twice within 400 ms with a card focused to pin it. Pinned cards animate to the top of the list (FIFO), refuse `Cmd+Backspace` / X deletion, and persist across reloads. Press `p p` again or click the pin icon to unpin. `/clear` still works on pinned cards. Reorders use a FLIP-based slide so cards smoothly move into place instead of snapping.
+
 ## 0.0.17 — 2026-05-13
 
 - **Fix: focused card no longer ping-pongs after rapid `g` presses.** Each new-agent spawn was scheduling four focus-stealing retries — pressing `g` three times queued twelve setTimeouts that ground the active card around for ~1.6 s and overrode any arrow-key navigation. Retries now bail the moment the user moves on.

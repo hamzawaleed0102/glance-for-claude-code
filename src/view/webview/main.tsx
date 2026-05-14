@@ -78,9 +78,32 @@ function App() {
           setAgents((prev) => prev.filter((a) => a.id !== m.id));
           break;
         case 'agentUpdate':
-          setAgents((prev) =>
-            prev.map((a) => (a.id === m.id ? { ...a, ...m.fields } : a)),
-          );
+          setAgents((prev) => {
+            const next = prev.map((a) =>
+              a.id === m.id ? { ...a, ...m.fields } : a,
+            );
+            // When the pinned flag flips, re-anchor the agent at the
+            // bottom of its new partition so the render-time stable
+            // sort preserves FIFO-by-pin-time. Without this, a card
+            // pinned second-or-later lands above earlier pins because
+            // the stable sort keeps the array's pre-pin (spawn) order
+            // within the pinned bucket.
+            if ('pinned' in m.fields) {
+              const idx = next.findIndex((a) => a.id === m.id);
+              if (idx >= 0) {
+                const [moved] = next.splice(idx, 1);
+                if (moved.pinned) {
+                  const firstUnpinned = next.findIndex((a) => !a.pinned);
+                  const insertAt =
+                    firstUnpinned < 0 ? next.length : firstUnpinned;
+                  next.splice(insertAt, 0, moved);
+                } else {
+                  next.push(moved);
+                }
+              }
+            }
+            return next;
+          });
           break;
         case 'activeChanged':
           setActiveId(m.id);

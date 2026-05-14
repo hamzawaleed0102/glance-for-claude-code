@@ -431,6 +431,20 @@ body {
   color: #ff6b6b;
   opacity: 1;
 }
+/* Pin button — same slot as the close X, different visual semantics.
+   Pinned state means "do not close" — color stays neutral (no red
+   hover), and the icon is readable at rest. The pin glyph doubles as
+   the "this card is pinned" indicator, so it must be visible without
+   hover. */
+.agent-kill.pinned {
+  opacity: 0.85;
+  color: var(--vscode-foreground);
+}
+.agent-kill.pinned:hover {
+  opacity: 1;
+  color: var(--vscode-foreground);
+  background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.08));
+}
 
 /* Footer — "+ New Session" with model-picker chevron */
 .new-agent-btn {

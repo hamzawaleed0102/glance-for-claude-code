@@ -40,6 +40,8 @@ const testEntries = [
   'src/agents/sessionScanner.test.ts',
   'src/agents/ids.ts',
   'src/agents/ids.test.ts',
+  'src/agents/pinSort.ts',
+  'src/agents/pinSort.test.ts',
 ];
 const testConfig = {
   entryPoints: testEntries,

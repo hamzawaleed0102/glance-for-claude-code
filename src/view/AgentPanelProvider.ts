@@ -234,6 +234,9 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
       case 'kill':
         this.manager.kill(m.id);
         break;
+      case 'togglePin':
+        this.manager.togglePin(m.id);
+        break;
       case 'rename':
         this.manager.rename(m.id, m.name);
         break;

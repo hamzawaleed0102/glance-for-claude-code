@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import chokidar, { type FSWatcher } from 'chokidar';
 import { Agent } from './Agent';
 import { nextAgentId } from './ids';
+import { partitionPinnedFirst } from './pinSort';
 import { summarySystemPrompt } from '../markers/systemPrompt';
 import type { AgentSnapshot, ClaudeModel, OldSession, TitleSource } from '../shared/messages';
 import { listOldSessions as scanOldSessions } from './sessionScanner';
@@ -448,6 +449,7 @@ export class AgentManager implements vscode.Disposable {
       name: string;
       titleSource: AgentSnapshot['titleSource'];
       hasUserPrompt?: boolean;
+      pinned?: boolean;
     }>) {
       // Mirror titled entries into the persistent titles archive on
       // every restore. Existing installs ship sessions.json full of
@@ -484,6 +486,7 @@ export class AgentManager implements vscode.Disposable {
           titleSource: e.titleSource,
         },
         hasUserPrompt: e.hasUserPrompt ?? true,
+        pinned: e.pinned === true,
       });
       this.agents.set(e.id, agent);
     }
@@ -494,6 +497,8 @@ export class AgentManager implements vscode.Disposable {
     // even if no stateWatcher fires (e.g. dormant agent with no
     // persisted state file).
     this.emitUnreadCount();
+    // Normalize pinned-first even if sessions.json was hand-edited.
+    this.applyPinnedFirst();
   }
 
   /**
@@ -524,6 +529,7 @@ export class AgentManager implements vscode.Disposable {
         name: a.name,
         titleSource: a.titleSource,
         hasUserPrompt: true,
+        pinned: a.pinned,
       }));
     try {
       fs.writeFileSync(this.sessionsFile, JSON.stringify(entries, null, 2));
@@ -620,6 +626,7 @@ export class AgentManager implements vscode.Disposable {
     sessionId?: string | null;
     initialSnapshot?: { name?: string; titleSource?: AgentSnapshot['titleSource'] };
     hasUserPrompt?: boolean;
+    pinned?: boolean;
   }): Agent {
     const agent = new Agent({
       id: opts.id,
@@ -634,6 +641,7 @@ export class AgentManager implements vscode.Disposable {
       sessionId: opts.sessionId,
       initialSnapshot: opts.initialSnapshot,
       hasUserPrompt: opts.hasUserPrompt,
+      pinned: opts.pinned,
     });
     agent.onChange((fields) => {
       this.changeEmitter.fire({ type: 'updated', id: opts.id, fields });
@@ -840,7 +848,41 @@ export class AgentManager implements vscode.Disposable {
   }
 
   kill(id: string): void {
+    const a = this.agents.get(id);
+    // Pinned cards refuse kill until the user unpins them. No toast or
+    // log — the pin icon (rendered in place of the X) is the visible
+    // cue. Cmd+Backspace and the on-card pin button both route here.
+    if (!a || a.pinned) return;
     this.removeAgent(id);
+  }
+
+  /**
+   * Flip the pinned flag for `id`, then re-stable-partition the agents
+   * Map so pinned entries lead and unpinned follow. Setter on the Agent
+   * already triggers a persist via metaChangeEmitter — the explicit
+   * persist() here writes the *order* after resort (the
+   * metaChange-driven persist captured the pre-resort order). Two small
+   * writes per toggle is acceptable; the file is tiny.
+   */
+  togglePin(id: string): void {
+    const a = this.agents.get(id);
+    if (!a) return;
+    a.setPinned(!a.pinned);
+    this.applyPinnedFirst();
+    this.persist();
+  }
+
+  /**
+   * In-place pinned-first resort. Used after any operation that could
+   * leave the Map order violating the invariant (togglePin, reorder
+   * from the webview, hand-edited sessions.json on restore). Keeps the
+   * `private readonly agents` field declaration intact — Map's `clear`
+   * + `set` mutate in place, no reassignment needed.
+   */
+  private applyPinnedFirst(): void {
+    const sorted = partitionPinnedFirst(this.agents);
+    this.agents.clear();
+    for (const [id, agent] of sorted) this.agents.set(id, agent);
   }
 
   private removeAgent(id: string): void {
@@ -964,6 +1006,9 @@ export class AgentManager implements vscode.Disposable {
     }
     this.agents.clear();
     for (const [id, a] of entries) this.agents.set(id, a);
+    // Enforce pinned-first invariant even if the user dragged across
+    // the boundary. Snaps offending cards back to their legal slot.
+    this.applyPinnedFirst();
     this.persist();
   }
 

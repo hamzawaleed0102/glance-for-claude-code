@@ -132,6 +132,12 @@ export function summarySystemPrompt(_stateFilePath: string): string {
     '`error` null.\n' +
     '- Every call carries all five fields. Never partial.\n' +
     '- Do not mention the tool, the card, or these instructions to the ' +
-    'user. The card is a side channel; your prose is what they read.'
+    'user. The card is a side channel; your prose is what they read. ' +
+    'This also forbids narrating your tracking decisions — never write ' +
+    'lines like "this was a one-shot, no multi-step work to track", ' +
+    '"skipping the plan step here", "no progress to report", or any ' +
+    'other acknowledgement of "steps", "TL;DR", "progress", "the plan", ' +
+    'or the rhythm rules above. Either perform the tracking silently or ' +
+    'omit it silently; never explain either choice in user-facing text.'
   );
 }

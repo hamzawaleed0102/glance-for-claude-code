@@ -36,9 +36,13 @@ export interface AgentSnapshot {
 ### `Agent` (`src/agents/Agent.ts`)
 - Private field `_pinned: boolean` (default `false`).
 - Public getter `pinned`.
-- `setPinned(pinned: boolean)`: assigns `_pinned`, fires `onMetaChange` (so AgentManager persists and the snapshot diff reaches the webview).
+- `setPinned(pinned: boolean)`: short-circuit if no change; otherwise assign `_pinned`, then fire **both** emitters (mirroring `setManualTitle`):
+  ```ts
+  this.changeEmitter.fire({ pinned: this._pinned });  // → 'updated' → webview agentUpdate
+  this.metaChangeEmitter.fire();                       // → manager persists sessions.json
+  ```
 - `snapshot()` includes `pinned: this._pinned`.
-- Constructor accepts `pinned?: boolean` in `AgentInit` for rehydration.
+- Constructor accepts `pinned?: boolean` in `AgentInit` for rehydration (defaults to `false`).
 
 ### `sessions.json` entry
 ```json
@@ -100,15 +104,15 @@ case 'togglePin':
 togglePin(id: string): void {
   const a = this.agents.get(id);
   if (!a) return;
-  a.setPinned(!a.pinned);
+  a.setPinned(!a.pinned);   // fires changeEmitter + metaChangeEmitter
   this.resortPinnedFirst();
-  this.persist();
+  this.persist();           // re-write sessions.json in the new order
 }
 ```
 
-`setPinned` already fires `onMetaChange`, which triggers `persist()` on its own — the explicit `persist()` after `resortPinnedFirst()` ensures the *order* is also written (onMetaChange persists the agent's own flag but doesn't trigger a re-serialize triggered by the Map reordering).
+`setPinned`'s `metaChangeEmitter` triggers a `persist()` of the **pre-resort** Map order. The explicit `persist()` after `resortPinnedFirst()` writes the corrected order. Two writes per pin toggle is acceptable — the file is small and the operation is rare.
 
-A `state` broadcast (full agent list with new order + `pinned: true` on the target) follows naturally from the existing change pipeline.
+Snapshot propagation: the `pinned` field reaches the webview via the existing `agentUpdate` path that `changeEmitter` already feeds. No new message type needed.
 
 ## Kill blocking
 
@@ -153,13 +157,34 @@ The card root also gets a `pinned` modifier class (`'agent-card pinned'`) for fu
 
 ## Drag-and-drop semantics
 
-No changes to `AgentList.tsx` drag handlers. The host's `resortPinnedFirst()` after `reorder()` is the single point of enforcement. Three cases:
+Both layers enforce the pinned-first invariant:
 
-1. **Drag unpinned card up into pinned region**: applied verbatim, then resort snaps it to the top of the unpinned section. Local optimistic state in the webview gets overwritten by the next `state` broadcast.
-2. **Drag pinned card down into unpinned region**: same as above — resort snaps it back to its FIFO slot.
-3. **Drag within either section**: no boundary crossed; resort is a no-op; reorder takes effect.
+**Host** — `resortPinnedFirst()` after `reorder()` keeps `sessions.json` clean (so a hand-edited or drag-induced violation never persists).
 
-A small visual "bounce" is acceptable for v1. If it's distracting, future v2 sets `draggable={!agent.pinned}` on the card (since drag-reorder of pinned cards is a non-goal anyway).
+**Webview** — `AgentList.tsx::orderedAgents` applies a stable sort `pinned-first` at render, on top of either the props order or the optimistic `localOrder` from drag:
+
+```ts
+const base = localOrder
+  ? localOrder.map((id) => agents.find((a) => a.id === id)).filter((a): a is AgentSnapshot => !!a)
+  : agents;
+const orderedAgents = [...base].sort((a, b) => Number(b.pinned) - Number(a.pinned));
+```
+
+This is needed because the existing `localOrder` reset only fires when the agent **set** changes (different IDs), not when the order changes. Without the render-time sort, a `togglePin` after a drag wouldn't visibly reorder the cards until the agent set changed.
+
+Three cases:
+
+1. **Drag unpinned card up into pinned region**: `localOrder` updates, but the render-time sort snaps it back below the pinned section. Host applies the same correction via `resortPinnedFirst()`.
+2. **Drag pinned card down into unpinned region**: same — render snaps it back to its FIFO slot.
+3. **Drag within either section**: no boundary crossed; sort is a no-op for within-section moves (stable sort preserves relative order).
+
+A small visual "bounce" on cross-boundary drags is acceptable for v1. If it's distracting, future v2 sets `draggable={!agent.pinned}` on pinned cards.
+
+## Snapshot propagation after toggle
+
+`Agent.setPinned()` fires `onMetaChange`, which the manager listens to. The manager emits a `change` event of type `updated` with `fields: { pinned }`, which `AgentPanelProvider` translates to an `agentUpdate` message. The webview applies the partial diff to that agent's snapshot, and the next render uses the new `pinned` flag — pin icon swap and pinned-first sort both kick in on the same render tick.
+
+No new message type or broadcast path. The pattern mirrors how `model`, `name`, and `titleSource` changes propagate today.
 
 ## Persistence and rehydration
 

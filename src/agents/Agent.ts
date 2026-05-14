@@ -97,6 +97,11 @@ export interface AgentInit {
    * eligible for persistence. Set from sessions.json on restore.
    */
   hasUserPrompt?: boolean;
+  /**
+   * Whether this agent should restore in the pinned state. Read from
+   * sessions.json. Defaults to false on fresh spawns.
+   */
+  pinned?: boolean;
 }
 
 export class Agent implements vscode.Disposable {
@@ -139,6 +144,7 @@ export class Agent implements vscode.Disposable {
    * decide whether to persist the agent across launches.
    */
   private _hasUserPrompt: boolean;
+  private _pinned: boolean;
 
   private readonly changeEmitter = new vscode.EventEmitter<Partial<AgentSnapshot>>();
   readonly onChange = this.changeEmitter.event;
@@ -188,6 +194,15 @@ export class Agent implements vscode.Disposable {
     return this._streaming;
   }
 
+  /**
+   * True when the user has pinned this card. Pinned cards stay at the
+   * top of the list (FIFO) and are protected from kill. Toggled via
+   * the `p` key or the pin button on the card.
+   */
+  get pinned(): boolean {
+    return this._pinned;
+  }
+
   constructor(init: AgentInit) {
     this.init = init;
     this.id = init.id;
@@ -198,6 +213,7 @@ export class Agent implements vscode.Disposable {
     this._sessionId = init.sessionId ?? null;
     this._dormant = init.dormant === true;
     this._hasUserPrompt = init.hasUserPrompt === true;
+    this._pinned = init.pinned === true;
 
     // Dormant agents aren't "starting" — they're showing their last-known
     // state. The starting placeholder is for live launches only.
@@ -536,6 +552,20 @@ export class Agent implements vscode.Disposable {
     this.metaChangeEmitter.fire();
   }
 
+  /**
+   * Toggle the pinned flag. Fires changeEmitter so the webview snapshot
+   * updates and metaChangeEmitter so AgentManager re-persists sessions.json.
+   * Short-circuits if the flag is unchanged (avoids redundant writes and
+   * an empty snapshot diff). Matches the dual-emitter pattern from
+   * setManualTitle.
+   */
+  setPinned(pinned: boolean): void {
+    if (this._pinned === pinned) return;
+    this._pinned = pinned;
+    this.changeEmitter.fire({ pinned: this._pinned });
+    this.metaChangeEmitter.fire();
+  }
+
   reveal(): void {
     // First reveal of a dormant agent revives it — spawns the Claude PTY
     // with `--resume <sessionId>` and shows the new terminal. Subsequent
@@ -591,6 +621,7 @@ export class Agent implements vscode.Disposable {
       skill: this._skill,
       streaming: this._streaming,
       starting: this._starting,
+      pinned: this._pinned,
     };
   }
 

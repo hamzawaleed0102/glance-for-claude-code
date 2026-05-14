@@ -157,6 +157,24 @@ export class Agent implements vscode.Disposable {
   readonly onExit = this.exitEmitter.event;
 
   /**
+   * Fires when VS Code disposes the agent's terminal from the outside (user
+   * clicked trash/X on the panel) — distinct from a PTY-driven exit or our
+   * own `terminal.dispose()`. The manager translates this into `kill(id)`.
+   * Suppressed during reload/quit via `AgentManager.shuttingDown`.
+   */
+  private readonly userCloseEmitter = new vscode.EventEmitter<void>();
+  readonly onUserClose = this.userCloseEmitter.event;
+
+  /**
+   * Set true immediately before we invoke `this.terminal?.dispose()` from
+   * within the Agent itself (becomeDormant, dispose). VS Code calls our
+   * Pseudoterminal's `close()` as part of that disposal, which fires
+   * `onCloseRequested` — we use this flag to skip the user-close path in
+   * that case so internal disposal doesn't loop back as a kill.
+   */
+  private _selfDisposing = false;
+
+  /**
    * Fires when Claude's Stop hook reports the end of a response. The Stop
    * hook is the cleanest "turn complete, ball is in user's court" signal —
    * far more reliable than guessing from PTY idle timers, which fire on
@@ -234,6 +252,9 @@ export class Agent implements vscode.Disposable {
    * construction for live agents and on `revive()` for dormant ones.
    */
   private spawn(): void {
+    // Reset the guard flag from any prior becomeDormant — the new terminal
+    // we're about to create is a fresh subject for user-close detection.
+    this._selfDisposing = false;
     const init = this.init;
     const modelFlag = init.model === 'default' ? '' : ` --model ${init.model}`;
     // `--resume <id>` reconnects to the prior conversation. Only emitted
@@ -294,8 +315,21 @@ export class Agent implements vscode.Disposable {
       // the extension can react) and on any accidental terminal close. We
       // transition to dormant so the card stays in sessions.json — the
       // user can revive it by clicking, or delete it deliberately via the
-      // Glancer kill button.
+      // Glancer kill button. The user-trash-on-terminal case is upgraded
+      // to a hard kill separately via `onCloseRequested` below.
       this.becomeDormant();
+    });
+    this.claude.onCloseRequested(() => {
+      // VS Code is disposing the terminal externally. Three sources:
+      //   - User clicked trash/X in the panel → fire userCloseEmitter so the
+      //     manager can kill the agent (matches the Glance trash button).
+      //   - Our own becomeDormant/dispose calling terminal.dispose() →
+      //     `_selfDisposing` is set, so skip.
+      //   - Extension host shutting down (reload/quit) → manager filters
+      //     via its own `shuttingDown` flag.
+      if (this._selfDisposing) return;
+      if (this._dormant) return;
+      this.userCloseEmitter.fire();
     });
     this.claude.onStartupComplete(() => {
       if (!this._starting) return;
@@ -315,6 +349,7 @@ export class Agent implements vscode.Disposable {
     if (this._dormant) return;
     this._dormant = true;
     this.claude = null;
+    this._selfDisposing = true;
     try {
       this.terminal?.dispose();
     } catch {
@@ -633,9 +668,11 @@ export class Agent implements vscode.Disposable {
   dispose(): void {
     this.stateWatcher.dispose();
     this.claude?.dispose();
+    this._selfDisposing = true;
     this.terminal?.dispose();
     this.changeEmitter.dispose();
     this.exitEmitter.dispose();
+    this.userCloseEmitter.dispose();
     this.metaChangeEmitter.dispose();
     this.turnCompleteEmitter.dispose();
   }

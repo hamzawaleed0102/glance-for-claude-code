@@ -30,6 +30,15 @@ export class AgentManager implements vscode.Disposable {
   private readonly agents = new Map<string, Agent>();
   private activeId: string | null = null;
 
+  /**
+   * Set true by `markShuttingDown()` (called from extension.deactivate
+   * before VS Code disposes terminals on reload/quit). While true, each
+   * agent's `onUserClose` handler short-circuits so Cmd+R doesn't wipe
+   * sessions.json out from under the user. Cleared by being re-created
+   * on the next activation.
+   */
+  private shuttingDown = false;
+
   private readonly storageDir: string;
   private readonly eventsDir: string;
   private readonly stateDir: string;
@@ -672,7 +681,17 @@ export class AgentManager implements vscode.Disposable {
     // and accidental terminal closure both fire exit, and removing on those
     // events wipes sessions.json out from under us. The Agent transitions
     // to dormant on its own (see Agent.becomeDormant). Permanent removal
-    // only happens via the explicit Glancer kill button → removeAgent().
+    // only happens via the explicit Glancer kill button → removeAgent(),
+    // or via `onUserClose` below when the user trashes the terminal from
+    // VS Code's panel.
+    agent.onUserClose(() => {
+      // `shuttingDown` is set in `markShuttingDown` (called from
+      // extension.deactivate before VS Code disposes terminals on
+      // reload/quit), so this handler only fires for real user-initiated
+      // terminal closure.
+      if (this.shuttingDown) return;
+      this.kill(opts.id);
+    });
     return agent;
   }
 
@@ -1121,6 +1140,17 @@ export class AgentManager implements vscode.Disposable {
       const message = raw || 'Waiting for input';
       agent.setNeedsAttention(message);
     }
+  }
+
+  /**
+   * Called from `extension.deactivate` before `dispose()`. Flips the
+   * `shuttingDown` flag so that the terminal-close events VS Code fires
+   * during reload/quit don't get routed into `kill()` — which would
+   * permanently wipe agents the user expects to find dormant on the
+   * next activation. Safe to call multiple times; idempotent.
+   */
+  markShuttingDown(): void {
+    this.shuttingDown = true;
   }
 
   dispose(): void {

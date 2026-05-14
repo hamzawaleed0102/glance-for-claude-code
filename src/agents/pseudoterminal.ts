@@ -23,6 +23,13 @@ export interface ClaudePty {
    */
   onStartupComplete: vscode.Event<void>;
   /**
+   * Fires when VS Code invokes `Pseudoterminal.close()` — i.e. the terminal
+   * is being disposed externally (user clicked trash on the panel, our own
+   * `terminal.dispose()` call, or extension host shutdown). The consumer
+   * (Agent) disambiguates these cases via its own flags.
+   */
+  onCloseRequested: vscode.Event<void>;
+  /**
    * Update the VS Code terminal tab title. The Pseudoterminal API surfaces
    * this via `onDidChangeName`; firing it makes VS Code repaint the tab.
    */
@@ -94,6 +101,7 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
   const exitEmitter = new vscode.EventEmitter<{ exitCode: number; signal?: number }>();
   const startupCompleteEmitter = new vscode.EventEmitter<void>();
   const nameEmitter = new vscode.EventEmitter<string>();
+  const closeRequestEmitter = new vscode.EventEmitter<void>();
 
   let proc: pty.IPty | null = null;
   let cols = 100;
@@ -238,6 +246,7 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
       start();
     },
     close() {
+      closeRequestEmitter.fire();
       proc?.kill();
       proc = null;
     },
@@ -260,6 +269,7 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
     onData: dataEmitter.event,
     onExit: exitEmitter.event,
     onStartupComplete: startupCompleteEmitter.event,
+    onCloseRequested: closeRequestEmitter.event,
     setName(name: string) {
       nameEmitter.fire(name);
     },
@@ -276,6 +286,7 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
       }
       startupCompleteEmitter.dispose();
       nameEmitter.dispose();
+      closeRequestEmitter.dispose();
     },
   };
 }

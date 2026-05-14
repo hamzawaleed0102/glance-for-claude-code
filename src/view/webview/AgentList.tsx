@@ -1,12 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AgentSnapshot, ClaudeModel } from '../../shared/messages';
 import { postToHost } from './api';
 import { AgentCard } from './AgentCard';
 
-// Maximum gap between the two `c` presses of the `c c` chord that runs
-// `/clear` in the active agent's terminal. Matches the feel of similar
-// two-key chords in other tools (e.g. tmux prefix sequences).
-const CC_CHORD_WINDOW_MS = 400;
+// Maximum gap between the two presses of any chord (`c c` for /clear,
+// `p p` for pin/unpin). Matches the feel of similar two-key chords in
+// other tools (e.g. tmux prefix sequences).
+const CHORD_WINDOW_MS = 400;
+
+// Reorder animation duration. FLIP technique: cards already moved to
+// their new DOM positions before this kicks in; we apply an inverse
+// transform synchronously in useLayoutEffect then transition it to
+// identity over this window, giving the illusion of smooth movement.
+const REORDER_ANIM_MS = 220;
 
 interface Props {
   agents: AgentSnapshot[];
@@ -36,11 +42,18 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const prevCountRef = useRef(agents.length);
-  // Timestamp of the most recent unpaired `c` keystroke. A second `c`
-  // within CC_CHORD_WINDOW_MS fires the `/clear` chord. Reset by any
-  // non-plain-`c` key (modifier'd `c` included) so the chord is always
-  // a clean two-keystroke sequence.
+  // Timestamps of the most recent unpaired chord keystrokes. A second
+  // press of the same plain key within CHORD_WINDOW_MS fires the chord.
+  // Reset by any keystroke that isn't a plain version of that key, so a
+  // chord is always a clean two-keystroke sequence.
   const lastCRef = useRef<number | null>(null);
+  const lastPRef = useRef<number | null>(null);
+  // FLIP animation bookkeeping. `prevRectsRef` holds the bounding rect
+  // each card had at the previous commit, keyed by agent id. On every
+  // commit we measure new rects, compute deltas, apply inverse
+  // transforms, then transition to identity — making cards appear to
+  // slide between rows when the list reorders.
+  const prevRectsRef = useRef<Map<string, DOMRect>>(new Map());
 
   // Drop the local order if it ever diverges from the actual agent set
   // (e.g. an agent was added or removed). The host's order is canonical
@@ -96,6 +109,54 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
     el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [activeId]);
 
+  // FLIP reorder animation. Runs after every render synchronously
+  // (useLayoutEffect → before paint). For each card whose top moved
+  // since the previous commit, apply an inverse translateY so the card
+  // visually starts at its old position, then transition transform back
+  // to identity over REORDER_ANIM_MS — producing a smooth slide.
+  // Mid-drag we skip the effect so the native drag preview isn't fought
+  // over by our transforms.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list || draggingId) return;
+    const cards = list.querySelectorAll<HTMLElement>('[data-agent-id]');
+    const newRects = new Map<string, DOMRect>();
+    for (const el of Array.from(cards)) {
+      const id = el.dataset.agentId;
+      if (id) newRects.set(id, el.getBoundingClientRect());
+    }
+    const prevRects = prevRectsRef.current;
+    for (const el of Array.from(cards)) {
+      const id = el.dataset.agentId;
+      if (!id) continue;
+      const prev = prevRects.get(id);
+      const next = newRects.get(id);
+      if (!prev || !next) continue;
+      const deltaY = prev.top - next.top;
+      if (Math.abs(deltaY) < 1) continue;
+      // Snap to the old position with no transition…
+      el.style.transition = 'none';
+      el.style.transform = `translateY(${deltaY}px)`;
+      // …force a synchronous reflow so the transition-none sticks…
+      el.getBoundingClientRect();
+      // …then animate back to identity.
+      el.style.transition = `transform ${REORDER_ANIM_MS}ms cubic-bezier(0.2, 0.7, 0.3, 1)`;
+      el.style.transform = '';
+      // Clear inline styles after the animation so future hover /
+      // status transitions on the card aren't polluted by leftovers.
+      el.addEventListener(
+        'transitionend',
+        function onEnd(ev) {
+          if (ev.propertyName !== 'transform') return;
+          el.style.transition = '';
+          el.style.transform = '';
+        },
+        { once: true },
+      );
+    }
+    prevRectsRef.current = newRects;
+  });
+
   useEffect(() => {
     const onFocus = () => {
       containerRef.current?.focus();
@@ -115,11 +176,15 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
-    // Any keystroke that isn't a plain `c` cancels a pending chord —
-    // includes Cmd+C / Ctrl+C copy, navigation keys, etc.
+    // Any keystroke that isn't a plain version of a chord key cancels
+    // that key's pending chord — Cmd+C / Ctrl+C copy, navigation keys,
+    // Shift+P typing, etc. Each chord tracks its own pending state.
     const isPlainC =
       e.key === 'c' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+    const isPlainP =
+      e.key === 'p' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
     if (!isPlainC) lastCRef.current = null;
+    if (!isPlainP) lastPRef.current = null;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       if (filtered.length === 0) return;
       e.preventDefault();
@@ -149,23 +214,29 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
       // rename input or other child does), so it doesn't eat typed Fs.
       e.preventDefault();
       postToHost({ type: 'toggleMaximizedPanel' });
-    } else if (e.key === 'p' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-      // Plain `p` toggles the pin on the active card. The
-      // `e.target !== e.currentTarget` guard at the top of onKeyDown
-      // already prevents this firing while the rename input owns focus,
-      // so typing `p` in the rename box doesn't trigger.
+    } else if (isPlainP) {
+      // `p p` chord — second `p` within CHORD_WINDOW_MS toggles the pin
+      // on the active card. First `p` just arms the chord. Same shape
+      // as `c c` for /clear so the two chords feel consistent.
       if (!activeId) return;
       e.preventDefault();
-      postToHost({ type: 'togglePin', id: activeId });
+      const now = Date.now();
+      const last = lastPRef.current;
+      if (last !== null && now - last < CHORD_WINDOW_MS) {
+        postToHost({ type: 'togglePin', id: activeId });
+        lastPRef.current = null;
+      } else {
+        lastPRef.current = now;
+      }
     } else if (isPlainC) {
-      // `c c` chord — second `c` within CC_CHORD_WINDOW_MS runs Claude's
+      // `c c` chord — second `c` within CHORD_WINDOW_MS runs Claude's
       // `/clear` slash command in the active agent's terminal and pulls
       // focus into it. First `c` just arms the chord.
       if (!activeId) return;
       e.preventDefault();
       const now = Date.now();
       const last = lastCRef.current;
-      if (last !== null && now - last < CC_CHORD_WINDOW_MS) {
+      if (last !== null && now - last < CHORD_WINDOW_MS) {
         postToHost({ type: 'clearActive' });
         lastCRef.current = null;
       } else {

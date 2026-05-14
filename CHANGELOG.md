@@ -2,7 +2,7 @@
 
 ## 0.0.X — YYYY-MM-DD
 
-- **New: pin agent cards.** Press `p` with a card focused to pin it. Pinned cards sort to the top of the list (FIFO), refuse `Cmd+Backspace` / X deletion, and persist across reloads. Press `p` again or click the pin icon to unpin. `/clear` still works on pinned cards.
+- **New: pin agent cards.** Press `p` twice within 400 ms with a card focused to pin it. Pinned cards animate to the top of the list (FIFO), refuse `Cmd+Backspace` / X deletion, and persist across reloads. Press `p p` again or click the pin icon to unpin. `/clear` still works on pinned cards. Reorders use a FLIP-based slide so cards smoothly move into place instead of snapping.
 
 ## 0.0.17 — 2026-05-13
 

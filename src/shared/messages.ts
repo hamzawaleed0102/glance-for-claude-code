@@ -26,6 +26,13 @@ export interface AgentSnapshot {
    * the user doesn't see the shell echo of the `claude …` invocation.
    */
   starting: boolean;
+  /**
+   * True when the user has pinned this card. Pinned cards auto-sort to
+   * the top of the list (FIFO within the pinned group) and refuse kill
+   * (Cmd+Backspace / X button). Toggled via the `p` key on a focused
+   * card or by clicking the pin icon. Persists in sessions.json.
+   */
+  pinned: boolean;
 }
 
 /**
@@ -122,4 +129,11 @@ export type WebviewToHost =
    * selected agent's terminal AND pulls focus into that terminal
    * so the user lands ready to type the next prompt.
    */
-  | { type: 'clearActive' };
+  | { type: 'clearActive' }
+  /**
+   * User pressed `p` on a focused card, or clicked the pin icon on a
+   * pinned card. Host flips the agent's `pinned` flag, resorts the list
+   * (pinned-first FIFO), and persists. Snapshot diff propagates via the
+   * existing agentUpdate path.
+   */
+  | { type: 'togglePin'; id: string };

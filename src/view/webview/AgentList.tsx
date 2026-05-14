@@ -142,6 +142,14 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
       // rename input or other child does), so it doesn't eat typed Fs.
       e.preventDefault();
       postToHost({ type: 'toggleMaximizedPanel' });
+    } else if (e.key === 'p' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+      // Plain `p` toggles the pin on the active card. The
+      // `e.target !== e.currentTarget` guard at the top of onKeyDown
+      // already prevents this firing while the rename input owns focus,
+      // so typing `p` in the rename box doesn't trigger.
+      if (!activeId) return;
+      e.preventDefault();
+      postToHost({ type: 'togglePin', id: activeId });
     } else if (isPlainC) {
       // `c c` chord — second `c` within CC_CHORD_WINDOW_MS runs Claude's
       // `/clear` slash command in the active agent's terminal and pulls

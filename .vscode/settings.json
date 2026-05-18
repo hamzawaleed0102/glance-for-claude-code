@@ -1,4 +1,11 @@
 {
+  "workbench.colorCustomizations": {
+    "statusBar.background": "#D97757",
+    "statusBar.noFolderBackground": "#D97757",
+    "statusBar.debuggingBackground": "#D97757",
+    "statusBar.foreground": "#ffffff",
+    "statusBar.debuggingForeground": "#ffffff"
+  },
   "actionButtons": {
     "defaultColor": "#ffffff",
     "loadNpmCommands": false,

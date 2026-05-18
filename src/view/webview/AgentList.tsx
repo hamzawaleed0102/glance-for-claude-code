@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AgentSnapshot, ClaudeModel } from '../../shared/messages';
 import { postToHost } from './api';
 import { AgentCard } from './AgentCard';
+import { reconcileOrder } from './reconcileOrder';
+import { contentRelativeTop } from './flipGeometry';
 
 // Maximum gap between the two presses of any chord (`c c` for /clear,
 // `p p` for pin/unpin). Matches the feel of similar two-key chords in
@@ -34,10 +36,9 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
-  // Local optimistic copy of the agent order. We update this immediately
-  // on drop for a snappy UX; the host then re-persists. Falls back to
-  // the prop-supplied order whenever the prop length/contents change
-  // (agents added/removed).
+  // The user-defined card order. Set on drag-drop, then kept across
+  // add/remove churn by reconcileOrder (see the effect below). `null`
+  // until the first drag — the prop-supplied order is used until then.
   const [localOrder, setLocalOrder] = useState<string[] | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -48,23 +49,28 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
   // chord is always a clean two-keystroke sequence.
   const lastCRef = useRef<number | null>(null);
   const lastPRef = useRef<number | null>(null);
-  // FLIP animation bookkeeping. `prevRectsRef` holds the bounding rect
-  // each card had at the previous commit, keyed by agent id. On every
-  // commit we measure new rects, compute deltas, apply inverse
-  // transforms, then transition to identity — making cards appear to
-  // slide between rows when the list reorders.
-  const prevRectsRef = useRef<Map<string, DOMRect>>(new Map());
+  // FLIP animation bookkeeping. `prevTopsRef` holds each card's
+  // *content-relative* top (scroll-invariant — see flipGeometry) at the
+  // previous commit, keyed by agent id. On every commit we re-measure,
+  // compute deltas, apply inverse transforms, then transition to
+  // identity — making cards slide between rows when the list reorders.
+  // Content-relative (not viewport) coords are essential: arrow-key nav
+  // fires a programmatic smooth-scroll, and viewport coords would make
+  // that scroll look like a reorder, slamming transforms over the scroll
+  // and visually destroying the list.
+  const prevTopsRef = useRef<Map<string, number>>(new Map());
 
-  // Drop the local order if it ever diverges from the actual agent set
-  // (e.g. an agent was added or removed). The host's order is canonical
-  // after that point.
+  // Reconcile the user-defined drag order against add/remove churn
+  // instead of discarding it. Dropping it on any agent set change
+  // snapped the whole list back to spawn order on every delete — the
+  // user's expectation is that order only changes when they drag.
+  // reconcileOrder keeps the dragged sequence, drops removed ids, and
+  // appends newly-spawned ones at the end.
   useEffect(() => {
-    if (!localOrder) return;
-    const propsIds = new Set(agents.map((a) => a.id));
-    const localIds = new Set(localOrder);
-    if (propsIds.size !== localIds.size) { setLocalOrder(null); return; }
-    for (const id of propsIds) if (!localIds.has(id)) { setLocalOrder(null); return; }
-  }, [agents, localOrder]);
+    setLocalOrder((prev) =>
+      reconcileOrder(prev, agents.map((a) => a.id)),
+    );
+  }, [agents]);
 
   // Apply the local order if active; otherwise use the props' order.
   // Then enforce pinned-first as a stable sort on top — mirrors the
@@ -120,19 +126,32 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
     const list = listRef.current;
     if (!list || draggingId) return;
     const cards = list.querySelectorAll<HTMLElement>('[data-agent-id]');
-    const newRects = new Map<string, DOMRect>();
+    // Measure once against the scroll container so every card's stored
+    // position is invariant to in-flight scrolling.
+    const listTop = list.getBoundingClientRect().top;
+    const scrollTop = list.scrollTop;
+    const newTops = new Map<string, number>();
     for (const el of Array.from(cards)) {
       const id = el.dataset.agentId;
-      if (id) newRects.set(id, el.getBoundingClientRect());
+      if (id) {
+        newTops.set(
+          id,
+          contentRelativeTop(
+            el.getBoundingClientRect().top,
+            listTop,
+            scrollTop,
+          ),
+        );
+      }
     }
-    const prevRects = prevRectsRef.current;
+    const prevTops = prevTopsRef.current;
     for (const el of Array.from(cards)) {
       const id = el.dataset.agentId;
       if (!id) continue;
-      const prev = prevRects.get(id);
-      const next = newRects.get(id);
-      if (!prev || !next) continue;
-      const deltaY = prev.top - next.top;
+      const prev = prevTops.get(id);
+      const next = newTops.get(id);
+      if (prev === undefined || next === undefined) continue;
+      const deltaY = prev - next;
       if (Math.abs(deltaY) < 1) continue;
       // Snap to the old position with no transition…
       el.style.transition = 'none';
@@ -154,7 +173,7 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
         { once: true },
       );
     }
-    prevRectsRef.current = newRects;
+    prevTopsRef.current = newTops;
   });
 
   useEffect(() => {

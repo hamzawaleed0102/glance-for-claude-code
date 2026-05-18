@@ -243,15 +243,17 @@ body {
   min-width: 0;
   padding-right: 22px; /* clear the right-side status dot */
 }
+/* Heading wraps onto as many lines as the panel width needs and is
+ * never truncated (unlike the clamped sub-line). overflow-wrap:anywhere
+ * so a long unbroken token still breaks instead of overflowing. */
 .agent-name {
   font-weight: 600;
   font-size: 13px;
   letter-spacing: -0.01em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
 }
 .agent-name-input {
   background: var(--vscode-input-background);

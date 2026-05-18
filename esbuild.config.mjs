@@ -42,6 +42,12 @@ const testEntries = [
   'src/agents/ids.test.ts',
   'src/agents/pinSort.ts',
   'src/agents/pinSort.test.ts',
+  'src/agents/neighborSelection.ts',
+  'src/agents/neighborSelection.test.ts',
+  'src/view/webview/reconcileOrder.ts',
+  'src/view/webview/reconcileOrder.test.ts',
+  'src/view/webview/flipGeometry.ts',
+  'src/view/webview/flipGeometry.test.ts',
 ];
 const testConfig = {
   entryPoints: testEntries,

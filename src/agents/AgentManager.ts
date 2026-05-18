@@ -5,6 +5,7 @@ import chokidar, { type FSWatcher } from 'chokidar';
 import { Agent } from './Agent';
 import { nextAgentId } from './ids';
 import { partitionPinnedFirst } from './pinSort';
+import { neighborAfterRemoval } from './neighborSelection';
 import { summarySystemPrompt } from '../markers/systemPrompt';
 import type { AgentSnapshot, ClaudeModel, OldSession, TitleSource } from '../shared/messages';
 import { listOldSessions as scanOldSessions } from './sessionScanner';
@@ -907,13 +908,16 @@ export class AgentManager implements vscode.Disposable {
   private removeAgent(id: string): void {
     const a = this.agents.get(id);
     if (!a) return;
+    // Capture the neighbor BEFORE deleting — focus moves to the card
+    // that was just above the killed one so the panel doesn't scroll
+    // away from the delete site (was: jump to the first card).
+    const neighbor = neighborAfterRemoval([...this.agents.keys()], id);
     // Delete from the map FIRST so the async `proc.onExit` triggered by
     // `a.dispose()` re-enters this function as a no-op.
     this.agents.delete(id);
     this.changeEmitter.fire({ type: 'removed', id });
     if (this.activeId === id) {
-      const next = this.agents.keys().next().value ?? null;
-      this.setActive(next);
+      this.setActive(neighbor);
     }
     a.dispose();
     // Promote the state file into the by-session archive (keyed by the

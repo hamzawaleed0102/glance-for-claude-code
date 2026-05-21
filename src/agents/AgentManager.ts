@@ -963,7 +963,7 @@ export class AgentManager implements vscode.Disposable {
    */
   clearActive(): void {
     if (!this.activeId) return;
-    this.agents.get(this.activeId)?.clearConversation();
+    this.agents.get(this.activeId)?.clearActive();
   }
 
   /** True if the agent's terminal is the currently active VS Code terminal. */

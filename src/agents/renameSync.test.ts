@@ -23,9 +23,23 @@ test('decideRename queues when the user has typed into the box', () => {
   );
 });
 
+test('decideRename queues when both streaming and inputDirty are true', () => {
+  assert.equal(
+    decideRename({ title: 'Auth bug', streaming: true, inputDirty: true, lastSent: null }),
+    'queue',
+  );
+});
+
 test('decideRename skips a title already echoed', () => {
   assert.equal(
     decideRename({ title: 'Auth bug', streaming: false, inputDirty: false, lastSent: 'Auth bug' }),
+    'skip',
+  );
+});
+
+test('decideRename skips a title already echoed even while streaming', () => {
+  assert.equal(
+    decideRename({ title: 'Auth bug', streaming: true, inputDirty: false, lastSent: 'Auth bug' }),
     'skip',
   );
 });

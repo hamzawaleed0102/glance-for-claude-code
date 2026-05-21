@@ -18,6 +18,9 @@ export type RenameDecision = 'send' | 'queue' | 'skip';
  *  - already echoed this exact title         -> 'skip'
  *  - Claude mid-turn, or user has typed       -> 'queue'
  *  - otherwise                                -> 'send'
+ *
+ * The title === lastSent check runs first — an already-echoed title is
+ * always skipped, even while Claude is mid-turn.
  */
 export function decideRename(opts: {
   title: string;
@@ -36,6 +39,11 @@ export function decideRename(opts: {
  *  - queued title already echoed      -> 'skip'  (caller clears the queue)
  *  - user has typed into the box      -> 'queue' (keep waiting)
  *  - otherwise                        -> 'send'
+ *
+ * Caller contract: `'skip'` is returned for BOTH the null-pending case and
+ * the already-echoed case. The caller MUST clear its pending-rename state
+ * whenever this returns `'skip'` — otherwise an already-echoed title stays
+ * queued forever and the queue is permanently stuck.
  */
 export function decideFlush(opts: {
   pending: string | null;

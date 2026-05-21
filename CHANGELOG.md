@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.27 — 2026-05-21
+
+- **New: the session name follows the card title.** When Claude assigns a title to a session, Glance now sends `/rename <title>` into that terminal so the session and its card share one name. Glance waits for an empty input box first — if you're mid-message, the rename holds until you've sent or cleared what you typed, so it never lands on top of half-typed text.
+
 ## 0.0.26 — 2026-05-21
 
 - **New: plain shell terminals.** Press `t` with the panel focused to spawn an ordinary shell terminal as a Glance card — no Claude, no MCP, no hooks. The card titles itself from the first command you run and shows a working dot while a command runs. Shell cards are ephemeral — they vanish on reload — and carry a cyan tab marker to set them apart from green Claude cards.

@@ -4,11 +4,7 @@ import { postToHost } from './api';
 import { AgentCard } from './AgentCard';
 import { reconcileOrder } from './reconcileOrder';
 import { contentRelativeTop } from './flipGeometry';
-
-// Maximum gap between the two presses of any chord (`c c` for /clear,
-// `p p` for pin/unpin). Matches the feel of similar two-key chords in
-// other tools (e.g. tmux prefix sequences).
-const CHORD_WINDOW_MS = 400;
+import { resolveAgentListKey } from './agentListKeymap';
 
 // Reorder animation duration. FLIP technique: cards already moved to
 // their new DOM positions before this kicks in; we apply an inverse
@@ -194,80 +190,74 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
   }, [activeId, filtered, onSelect]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Only the panel container itself drives shortcuts — never a child
+    // (the rename input, a button). Without this, text typed into the
+    // rename box would trigger `g` / `t` / `r` / the chords.
     if (e.target !== e.currentTarget) return;
-    // Any keystroke that isn't a plain version of a chord key cancels
-    // that key's pending chord — Cmd+C / Ctrl+C copy, navigation keys,
-    // Shift+P typing, etc. Each chord tracks its own pending state.
-    const isPlainC =
-      e.key === 'c' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
-    const isPlainP =
-      e.key === 'p' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
-    if (!isPlainC) lastCRef.current = null;
-    if (!isPlainP) lastPRef.current = null;
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      if (filtered.length === 0) return;
-      e.preventDefault();
-      const ids = filtered.map((a) => a.id);
-      const i = activeId ? ids.indexOf(activeId) : -1;
-      const step = e.key === 'ArrowDown' ? 1 : -1;
-      const len = ids.length;
-      const next = i < 0 ? (step > 0 ? 0 : len - 1) : (i + step + len) % len;
-      onSelect(ids[next]);
-    } else if (e.key === 'Enter') {
-      // Enter on a focused card hands keyboard focus to the agent's
-      // terminal. The host's `focusTerminal` path uses `show(false)` —
-      // focus-stealing, unlike `select` which preserves panel focus.
-      if (!activeId) return;
-      e.preventDefault();
-      postToHost({ type: 'focusTerminal', id: activeId });
-    } else if (e.key === 'g' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      // Plain `g` spawns a new agent (the second half of the Cmd+Shift+G,G
-      // chord — first press focuses the panel, second `g` opens a session).
-      e.preventDefault();
-      postToHost({ type: 'newAgent' });
-    } else if (e.key === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      // Plain `f` toggles the bottom panel maximize state — handy for
-      // pulling the active terminal full-screen and dropping back. The
-      // guard `e.target !== e.currentTarget` at the top means this only
-      // fires when the panel container itself owns focus (not when a
-      // rename input or other child does), so it doesn't eat typed Fs.
-      e.preventDefault();
-      postToHost({ type: 'toggleMaximizedPanel' });
-    } else if (isPlainP) {
-      // `p p` chord — second `p` within CHORD_WINDOW_MS toggles the pin
-      // on the active card. First `p` just arms the chord. Same shape
-      // as `c c` for /clear so the two chords feel consistent.
-      if (!activeId) return;
-      e.preventDefault();
-      const now = Date.now();
-      const last = lastPRef.current;
-      if (last !== null && now - last < CHORD_WINDOW_MS) {
-        postToHost({ type: 'togglePin', id: activeId });
-        lastPRef.current = null;
-      } else {
-        lastPRef.current = now;
-      }
-    } else if (isPlainC) {
-      // `c c` chord — second `c` within CHORD_WINDOW_MS runs Claude's
-      // `/clear` slash command in the active agent's terminal and pulls
-      // focus into it. First `c` just arms the chord.
-      if (!activeId) return;
-      e.preventDefault();
-      const now = Date.now();
-      const last = lastCRef.current;
-      if (last !== null && now - last < CHORD_WINDOW_MS) {
+    // All the decision logic — key matching, chord timing, wrap-around
+    // navigation — lives in the pure, unit-tested `resolveAgentListKey`.
+    // This handler just feeds it the event + chord state and applies the
+    // action it returns.
+    const result = resolveAgentListKey(
+      {
+        key: e.key,
+        metaKey: e.metaKey,
+        ctrlKey: e.ctrlKey,
+        altKey: e.altKey,
+        shiftKey: e.shiftKey,
+      },
+      {
+        activeId,
+        ids: filtered.map((a) => a.id),
+        lastC: lastCRef.current,
+        lastP: lastPRef.current,
+        now: Date.now(),
+      },
+    );
+    // Persist the chord bookkeeping the resolver computed.
+    lastCRef.current = result.lastC;
+    lastPRef.current = result.lastP;
+    if (result.preventDefault) e.preventDefault();
+    const action = result.action;
+    switch (action.type) {
+      case 'select':
+        onSelect(action.id);
+        break;
+      case 'focusTerminal':
+        // `focusTerminal` steals focus into the terminal (host uses
+        // `show(false)`), unlike `select` which preserves panel focus.
+        postToHost({ type: 'focusTerminal', id: action.id });
+        break;
+      case 'newAgent':
+        postToHost({ type: 'newAgent' });
+        break;
+      case 'newTerminal':
+        postToHost({ type: 'newTerminal' });
+        break;
+      case 'rename':
+        // AgentCard listens for `glancer:rename` and flips its own editing
+        // state — the same window-event bridge used for `glancer:focus`.
+        window.dispatchEvent(
+          new CustomEvent('glancer:rename', { detail: { id: action.id } }),
+        );
+        break;
+      case 'toggleMaximizedPanel':
+        postToHost({ type: 'toggleMaximizedPanel' });
+        break;
+      case 'togglePin':
+        postToHost({ type: 'togglePin', id: action.id });
+        break;
+      case 'clearActive':
         postToHost({ type: 'clearActive' });
-        lastCRef.current = null;
-      } else {
-        lastCRef.current = now;
-      }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      containerRef.current?.blur();
-    } else if ((e.metaKey || e.ctrlKey) && (e.key === 'Backspace' || e.key === 'Delete')) {
-      if (!activeId) return;
-      e.preventDefault();
-      onKill(activeId);
+        break;
+      case 'blurPanel':
+        containerRef.current?.blur();
+        break;
+      case 'kill':
+        onKill(action.id);
+        break;
+      case 'none':
+        break;
     }
   };
 

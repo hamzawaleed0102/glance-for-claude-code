@@ -44,10 +44,14 @@ const testEntries = [
   'src/agents/pinSort.test.ts',
   'src/agents/neighborSelection.ts',
   'src/agents/neighborSelection.test.ts',
+  'src/agents/shellTitle.ts',
+  'src/agents/shellTitle.test.ts',
   'src/view/webview/reconcileOrder.ts',
   'src/view/webview/reconcileOrder.test.ts',
   'src/view/webview/flipGeometry.ts',
   'src/view/webview/flipGeometry.test.ts',
+  'src/view/webview/agentListKeymap.ts',
+  'src/view/webview/agentListKeymap.test.ts',
 ];
 const testConfig = {
   entryPoints: testEntries,

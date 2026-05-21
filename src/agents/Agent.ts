@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import { createClaudePty, type ClaudePty } from './pseudoterminal';
 import { watchState, type StateWatcher, type AgentState } from '../markers/stateWatcher';
-import type { AgentSnapshot, ClaudeModel, TitleSource } from '../shared/messages';
+import type { AgentSnapshot, AgentKind, ClaudeModel, TitleSource } from '../shared/messages';
+import type { ManagedAgent } from './ManagedAgent';
 
 function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
@@ -104,8 +105,9 @@ export interface AgentInit {
   pinned?: boolean;
 }
 
-export class Agent implements vscode.Disposable {
+export class Agent implements vscode.Disposable, ManagedAgent {
   readonly id: string;
+  readonly kind: AgentKind = 'claude';
   private _name: string;
   private _titleSource: TitleSource = 'default';
   private _model: ClaudeModel;
@@ -637,7 +639,7 @@ export class Agent implements vscode.Disposable {
    * paths are idempotent because `resetCardState` only emits when
    * fields actually changed.
    */
-  clearConversation(): void {
+  clearActive(): void {
     this.focusTerminal();
     this.terminal?.sendText('/clear');
     this.resetCardState();
@@ -646,6 +648,7 @@ export class Agent implements vscode.Disposable {
   snapshot(): AgentSnapshot {
     return {
       id: this.id,
+      kind: this.kind,
       name: this._name,
       titleSource: this._titleSource,
       model: this._model,

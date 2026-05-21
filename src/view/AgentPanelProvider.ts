@@ -218,6 +218,18 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
         this.scheduleFocusRetries(id);
         break;
       }
+      case 'newTerminal': {
+        const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!cwd) {
+          vscode.window.showWarningMessage('Open a workspace folder first.');
+          return;
+        }
+        const id = this.manager.newTerminal({ cwd });
+        // Drop focus into the new shell, same as `newAgent`.
+        this.pendingFocusTerminalId = id;
+        this.scheduleFocusRetries(id);
+        break;
+      }
       case 'select':
         this.manager.select(m.id);
         break;

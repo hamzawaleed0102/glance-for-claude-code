@@ -3,6 +3,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import chokidar, { type FSWatcher } from 'chokidar';
 import { Agent } from './Agent';
+import { ShellAgent } from './ShellAgent';
+import type { ManagedAgent } from './ManagedAgent';
 import { nextAgentId } from './ids';
 import { partitionPinnedFirst } from './pinSort';
 import { neighborAfterRemoval } from './neighborSelection';
@@ -28,7 +30,7 @@ type ManagerEvent =
  * never throws and never blocks Claude's turn.
  */
 export class AgentManager implements vscode.Disposable {
-  private readonly agents = new Map<string, Agent>();
+  private readonly agents = new Map<string, ManagedAgent>();
   private activeId: string | null = null;
 
   /**
@@ -530,7 +532,8 @@ export class AgentManager implements vscode.Disposable {
     // protection needed. Two windows on the SAME workspace still share
     // the file, but they're showing the same agent set anyway.
     const entries = Array.from(this.agents.values())
-      .filter((a) => a.hasUserPrompt)
+      // Only Claude agents are persisted — shell cards are ephemeral.
+      .filter((a): a is Agent => a instanceof Agent && a.hasUserPrompt)
       .map((a) => ({
         id: a.id,
         cwd: a.cwd,
@@ -730,6 +733,34 @@ export class AgentManager implements vscode.Disposable {
   }
 
   /**
+   * Spawn a plain shell terminal card (the `t` key). Unlike `newAgent` this
+   * starts no Claude process — `ShellAgent` wraps an ordinary VS Code
+   * integrated terminal. Shell cards are never persisted, so there is no
+   * `persist()` call and no orphan state file to wipe.
+   */
+  newTerminal(opts: { cwd: string }): string {
+    const id = nextAgentId(this.agents.keys());
+    const agent = new ShellAgent({ id, cwd: opts.cwd });
+    agent.onChange((fields) => {
+      this.changeEmitter.fire({ type: 'updated', id, fields });
+      this.emitUnreadCount();
+    });
+    // A shell card can't be revived — closing its terminal removes the card.
+    // Mirror makeAgent's onUserClose guard: terminal-close events also fire
+    // during reload/quit teardown, and removeAgent → persist() would then
+    // rewrite sessions.json mid-shutdown.
+    agent.onClose(() => {
+      if (this.shuttingDown) return;
+      this.removeAgent(id);
+    });
+    this.agents.set(id, agent);
+    this.changeEmitter.fire({ type: 'added', agent: agent.snapshot() });
+    this.setActive(id);
+    agent.reveal();
+    return id;
+  }
+
+  /**
    * Read the session-titles archive (sessionId → name/titleSource).
    * Returns an empty Map on missing file or invalid JSON. Written to
    * by recordSessionTitle on every onMetaChange; read by the picker
@@ -801,7 +832,8 @@ export class AgentManager implements vscode.Disposable {
   async listOldSessions(cwd: string): Promise<OldSession[]> {
     const open = new Set<string>();
     for (const a of this.agents.values()) {
-      if (a.sessionId) open.add(a.sessionId);
+      // sessionId is Claude-only; shell cards have none to exclude.
+      if (a instanceof Agent && a.sessionId) open.add(a.sessionId);
     }
     const titles = this.readSessionTitles();
     const sessions = await scanOldSessions(cwd, open);
@@ -920,14 +952,16 @@ export class AgentManager implements vscode.Disposable {
       this.setActive(neighbor);
     }
     a.dispose();
-    // Promote the state file into the by-session archive (keyed by the
-    // Claude sessionId) so a future openOldSession can re-seed a new
-    // card with the previous tldr/progress/skill. If there's no
-    // sessionId yet (kill happened before SessionStart), fall through
-    // to the unconditional delete so we don't strand an orphan file
-    // under the same glance id.
-    this.archiveStateOnKill(a);
-    a.purgePersistentState();
+    // State archival / purge is Claude-only — shell agents have no
+    // sessionId and no state file. For a Claude agent, promote the state
+    // file into the by-session archive (keyed by the Claude sessionId) so
+    // a future openOldSession can re-seed a new card with the previous
+    // tldr/progress/skill; if there's no sessionId yet (kill before
+    // SessionStart), purgePersistentState does the unconditional delete.
+    if (a instanceof Agent) {
+      this.archiveStateOnKill(a);
+      a.purgePersistentState();
+    }
     this.persist();
     // Always recompute — even if this agent wasn't in attention, closing
     // it can still shift other UI that derives from the agent set (and
@@ -957,13 +991,14 @@ export class AgentManager implements vscode.Disposable {
   }
 
   /**
-   * Run `/clear` in the currently selected agent's terminal and focus it.
+   * Clear the active content in the currently selected agent's terminal and
+   * focus it: `/clear` for a Claude card, scrollback clear for a shell card.
    * Wired to the `c c` chord on the focused agent panel. No-op when there
    * is no selected agent (fresh session, empty list).
    */
   clearActive(): void {
     if (!this.activeId) return;
-    this.agents.get(this.activeId)?.clearConversation();
+    this.agents.get(this.activeId)?.clearActive();
   }
 
   /** True if the agent's terminal is the currently active VS Code terminal. */
@@ -1019,7 +1054,7 @@ export class AgentManager implements vscode.Disposable {
    * sends the full ordering).
    */
   reorder(ids: string[]): void {
-    const entries: [string, Agent][] = [];
+    const entries: [string, ManagedAgent][] = [];
     for (const id of ids) {
       const a = this.agents.get(id);
       if (a) entries.push([id, a]);
@@ -1093,6 +1128,13 @@ export class AgentManager implements vscode.Disposable {
     const agent = this.agents.get(agentId);
     if (!agent) {
       console.warn('[glancer] hook event for unknown agent', agentId);
+      return;
+    }
+    // Shell-terminal cards have no hooks wired, so a hook event addressed
+    // to one would be a bug. Narrowing to the Claude `Agent` also lets the
+    // Claude-only calls below (setSessionId, notifyTurnComplete, …) typecheck.
+    if (!(agent instanceof Agent)) {
+      console.warn('[glancer] hook event for non-Claude agent', agentId);
       return;
     }
     if (hookEvent === 'SessionStart') {

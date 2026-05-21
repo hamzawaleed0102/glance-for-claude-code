@@ -45,6 +45,26 @@ Three runtimes cooperate per agent. Understand all three before changing the mar
 
 On activation, `extension.ts` also checks `context.globalState.get('glancer.walkthrough.seen')` and, if unset, opens the `glancer.welcome` walkthrough exactly once via `workbench.action.openWalkthrough`. This is the only reason `activationEvents` includes `onStartupFinished` alongside `onView:glancer.agents` — without it the first-install user wouldn't trigger activation until they opened the panel manually. The same walkthrough can be re-opened any time via `Glance: Show Welcome Tour` in the Command Palette.
 
+#### Card kinds: Claude agents vs shell terminals
+
+A card is one of two kinds, discriminated by `AgentSnapshot.kind`:
+
+- **`'claude'`** — the original `Agent`: a node-pty `Pseudoterminal` running
+  `claude …`, with the MCP state pipeline, hooks, dormancy, and `--resume`.
+- **`'shell'`** — `ShellAgent` (`src/agents/ShellAgent.ts`): an ordinary
+  `vscode.window.createTerminal` shell, spawned with the `t` key. No MCP, no
+  hooks, no state file, no `sessionId`, never persisted. Its card title comes
+  from the first command (`onDidStartTerminalShellExecution`) and its
+  in-progress dot from command start/end; `c c` clears the scrollback instead
+  of running `/clear`. `isTransient: true` makes shell terminals vanish on
+  reload.
+
+Both implement the `ManagedAgent` interface (`src/agents/ManagedAgent.ts`) —
+the kind-agnostic surface `AgentManager` uses. The manager stores
+`Map<string, ManagedAgent>` and narrows with `instanceof Agent` on the four
+Claude-only paths: hook routing, `persist()`, the kill-time state archive, and
+`listOldSessions()`.
+
 ### 2. Marker / state pipeline (the load-bearing flow)
 
 Claude updates the agent card **exclusively** via the MCP tool `glancer - update_state` (server: `src/markers/mcp-server.mjs`). The pipeline is:

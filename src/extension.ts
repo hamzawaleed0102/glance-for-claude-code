@@ -34,6 +34,14 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       manager?.newAgent({ cwd });
     }),
+    vscode.commands.registerCommand('glancer.newTerminal', () => {
+      const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!cwd) {
+        vscode.window.showWarningMessage('Open a workspace folder first.');
+        return;
+      }
+      manager?.newTerminal({ cwd });
+    }),
     vscode.commands.registerCommand('glancer.killActive', () => {
       const id = manager?.getActiveId();
       if (id) manager?.kill(id);

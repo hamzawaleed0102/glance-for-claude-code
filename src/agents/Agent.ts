@@ -375,6 +375,10 @@ export class Agent implements vscode.Disposable, ManagedAgent {
       // already disposed by VS Code on shutdown
     }
     this.terminal = null;
+    // The rename-echo fields (_pendingRename, _lastSentRename, _inputDirty)
+    // intentionally survive dormancy — the conversation is unchanged, so a
+    // revive()'d agent keeps its loop guard. They reset only on /clear via
+    // resetCardState.
     if (this._streaming) {
       this._streaming = false;
       this.changeEmitter.fire({ streaming: false });
@@ -507,6 +511,9 @@ export class Agent implements vscode.Disposable, ManagedAgent {
     }
     if (Object.keys(patch).length > 0) this.changeEmitter.fire(patch);
     this.turnCompleteEmitter.fire();
+    // Flush is tied to the real Stop hook only — the Notification-driven
+    // setNeedsAttention path deliberately does NOT flush, so a queued
+    // rename waits for a genuine turn-complete rather than an idle ping.
     this.flushPendingRename();
   }
 
@@ -697,15 +704,18 @@ export class Agent implements vscode.Disposable, ManagedAgent {
 
   /** Flush a queued `/rename` echo once a turn completes, if now safe. */
   private flushPendingRename(): void {
+    const pending = this._pendingRename;
     const decision = decideFlush({
-      pending: this._pendingRename,
+      pending,
       inputDirty: this._inputDirty,
       lastSent: this._lastSentRename,
     });
-    if (decision === 'send' && this._pendingRename !== null) {
-      this.sendRename(this._pendingRename);
+    if (decision === 'send' && pending !== null) {
+      this.sendRename(pending);
       this._pendingRename = null;
     } else if (decision === 'skip') {
+      // Per decideFlush's caller contract: clear the queue even when
+      // skipping, so an already-echoed title can't stay queued forever.
       this._pendingRename = null;
     }
     // 'queue' — keep _pendingRename; a later Stop retries.
@@ -720,6 +730,8 @@ export class Agent implements vscode.Disposable, ManagedAgent {
     const clean = title.replace(/[\r\n]+/g, ' ').trim();
     if (clean.length === 0) return;
     this.claude?.sendInput(`/rename ${clean}\r`);
+    // store the raw (pre-clean) title — decideRename/decideFlush compare
+    // against this same raw value
     this._lastSentRename = title;
   }
 

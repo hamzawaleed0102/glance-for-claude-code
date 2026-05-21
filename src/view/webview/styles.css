@@ -82,8 +82,8 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px 30px 14px 20px;
+  gap: 5px;
+  padding: 8px 28px 9px 16px;
   border: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.08));
   border-radius: 0;
   background: linear-gradient(
@@ -92,7 +92,7 @@ body {
     rgba(255, 255, 255, 0.01) 100%
   );
   cursor: pointer;
-  margin-bottom: 8px;
+  margin-bottom: 5px;
   box-sizing: border-box;
   transition: transform 140ms ease, background 140ms ease,
     border-color 140ms ease, box-shadow 140ms ease;

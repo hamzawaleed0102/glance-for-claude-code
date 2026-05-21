@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.0.26 — 2026-05-21
+
+- **New: plain shell terminals.** Press `t` with the panel focused to spawn an ordinary shell terminal as a Glance card — no Claude, no MCP, no hooks. The card titles itself from the first command you run and shows a working dot while a command runs. Shell cards are ephemeral — they vanish on reload — and carry a cyan tab marker to set them apart from green Claude cards.
+- **New: rename a card from the keyboard.** Press `r` with a card highlighted to open its title for inline editing — the keyboard equivalent of double-clicking. The box opens with the whole name selected; `Enter` saves, `Esc` cancels, and focus returns to the panel afterward. Works on Claude and shell cards alike.
+- **Polish: tighter agent-card spacing** — reduced padding, row gaps, and inter-card margin so more of the fleet fits on screen at once.
+- **Internal: the panel keyboard map is now a pure, unit-tested module.** `AgentList`'s keydown handler delegates to `resolveAgentListKey`; 28 tests cover every shortcut, the `c c` / `p p` chords, arrow wrap-around, and modifier guards.
+
+## 0.0.25 — 2026-05-18
+
+- **Fix: drag order survives a card deletion**, the FLIP reorder animation is scroll-safe, and killing a card moves focus to a sensible neighbour instead of dropping it.
+
 ## 0.0.24 — 2026-05-15
 
 - **New: pin agent cards.** Press `p` twice within 400 ms with a card focused to pin it. Pinned cards animate to the top of the list (FIFO), refuse `Cmd+Backspace` / X deletion, and persist across reloads. Press `p p` again or click the pin icon to unpin. `/clear` still works on pinned cards. Reorders use a FLIP-based slide so cards smoothly move into place instead of snapping.

@@ -30,6 +30,19 @@ export interface ClaudePty {
    */
   onCloseRequested: vscode.Event<void>;
   /**
+   * Fires whenever the user types into the terminal — any keystroke or paste
+   * routed through `Pseudoterminal.handleInput`. Extension-injected input
+   * sent via `sendInput` does NOT fire this, so a consumer can treat it as a
+   * pure "the user touched the input box" signal.
+   */
+  onUserInput: vscode.Event<void>;
+  /**
+   * Write text straight to the underlying PTY, bypassing the `handleInput`
+   * path. Used for extension-injected input (slash commands) so it is never
+   * mistaken for the user typing. Include a trailing `\r` to submit.
+   */
+  sendInput(text: string): void;
+  /**
    * Update the VS Code terminal tab title. The Pseudoterminal API surfaces
    * this via `onDidChangeName`; firing it makes VS Code repaint the tab.
    */
@@ -102,6 +115,7 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
   const startupCompleteEmitter = new vscode.EventEmitter<void>();
   const nameEmitter = new vscode.EventEmitter<string>();
   const closeRequestEmitter = new vscode.EventEmitter<void>();
+  const userInputEmitter = new vscode.EventEmitter<void>();
 
   let proc: pty.IPty | null = null;
   let cols = 100;
@@ -252,6 +266,10 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
     },
     handleInput(data) {
       proc?.write(data);
+      // Only real terminal keystrokes / pastes reach handleInput — input
+      // injected by the extension goes through `sendInput`, which writes
+      // straight to the PTY. So this is a clean "user touched the box" signal.
+      userInputEmitter.fire();
     },
     setDimensions(dim) {
       cols = Math.max(20, dim.columns);
@@ -273,6 +291,10 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
     setName(name: string) {
       nameEmitter.fire(name);
     },
+    sendInput(text: string) {
+      proc?.write(text);
+    },
+    onUserInput: userInputEmitter.event,
     dispose() {
       stopPlaceholderAnimation();
       if (startupTimer) {
@@ -287,6 +309,7 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
       startupCompleteEmitter.dispose();
       nameEmitter.dispose();
       closeRequestEmitter.dispose();
+      userInputEmitter.dispose();
     },
   };
 }

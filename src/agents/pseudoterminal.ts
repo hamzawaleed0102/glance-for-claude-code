@@ -269,6 +269,8 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
       // Only real terminal keystrokes / pastes reach handleInput — input
       // injected by the extension goes through `sendInput`, which writes
       // straight to the PTY. So this is a clean "user touched the box" signal.
+      // Fire regardless of `proc` state: a keystroke that didn't reach the
+      // PTY (proc null / exited) still counts as the user touching the box.
       userInputEmitter.fire();
     },
     setDimensions(dim) {
@@ -288,13 +290,13 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
     onExit: exitEmitter.event,
     onStartupComplete: startupCompleteEmitter.event,
     onCloseRequested: closeRequestEmitter.event,
-    setName(name: string) {
-      nameEmitter.fire(name);
-    },
+    onUserInput: userInputEmitter.event,
     sendInput(text: string) {
       proc?.write(text);
     },
-    onUserInput: userInputEmitter.event,
+    setName(name: string) {
+      nameEmitter.fire(name);
+    },
     dispose() {
       stopPlaceholderAnimation();
       if (startupTimer) {

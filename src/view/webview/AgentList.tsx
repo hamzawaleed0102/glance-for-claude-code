@@ -225,6 +225,11 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
       // chord — first press focuses the panel, second `g` opens a session).
       e.preventDefault();
       postToHost({ type: 'newAgent' });
+    } else if (e.key === 't' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      // Plain `t` spawns a plain shell terminal card — the sibling of `g`,
+      // which spawns a Claude session.
+      e.preventDefault();
+      postToHost({ type: 'newTerminal' });
     } else if (e.key === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey) {
       // Plain `f` toggles the bottom panel maximize state — handy for
       // pulling the active terminal full-screen and dropping back. The

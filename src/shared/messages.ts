@@ -1,8 +1,12 @@
 export type ClaudeModel = 'default' | 'opus' | 'sonnet' | 'haiku';
 export type TitleSource = 'default' | 'ai' | 'rename' | 'manual';
+/** Which kind of card this is: a Claude Code session, or a plain shell terminal. */
+export type AgentKind = 'claude' | 'shell';
 
 export interface AgentSnapshot {
   id: string;
+  /** 'claude' = a Claude Code session; 'shell' = a plain shell terminal. */
+  kind: AgentKind;
   name: string;
   titleSource: TitleSource;
   model: ClaudeModel;
@@ -84,6 +88,11 @@ export type HostToWebview =
 export type WebviewToHost =
   | { type: 'ready' }
   | { type: 'newAgent'; model?: ClaudeModel }
+  /**
+   * User pressed `t` on the focused panel. Host spawns a plain shell
+   * terminal card (no Claude process) via `AgentManager.newTerminal`.
+   */
+  | { type: 'newTerminal' }
   | { type: 'select'; id: string }
   | { type: 'kill'; id: string }
   | { type: 'rename'; id: string; name: string }

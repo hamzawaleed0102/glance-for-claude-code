@@ -139,6 +139,7 @@ export function AgentCard({
       data-agent-id={agent.id}
       className={
         'agent-card' +
+        (agent.kind === 'shell' ? ' kind-shell' : '') +
         (active ? ' active' : '') +
         (agent.starting ? ' starting' : '') +
         (dragging ? ' dragging' : '') +
@@ -179,6 +180,9 @@ export function AgentCard({
           />
         ) : (
           <>
+            {agent.kind === 'shell' && (
+              <span className="agent-shell-prefix" aria-hidden="true">{'>_'}</span>
+            )}
             <span className="agent-name">{agent.name}</span>
             {isLocked && <span className="agent-title-lock" title="Manually set">●</span>}
             {agent.model !== 'default' && (

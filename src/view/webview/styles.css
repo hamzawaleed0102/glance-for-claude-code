@@ -180,6 +180,38 @@ body {
 .agent-card.status-error::before    { background: var(--danger); }
 .agent-card.status-done::before     { background: var(--done); }
 
+/* Shell-terminal cards — a plain shell, not a Claude session. A dashed
+ * border, a faint blue tint, and a monospace `>_` title set them apart at
+ * a glance. `:not(.active)` keeps the active-card highlight (background +
+ * ring) winning cleanly when a shell card is selected. */
+.agent-card.kind-shell {
+  border-style: dashed;
+}
+.agent-card.kind-shell:not(.active) {
+  background: linear-gradient(
+    180deg,
+    rgba(120, 200, 255, 0.055) 0%,
+    rgba(120, 200, 255, 0.02) 100%
+  );
+}
+.agent-card.kind-shell:not(.active):hover {
+  background: linear-gradient(
+    180deg,
+    rgba(120, 200, 255, 0.08) 0%,
+    rgba(120, 200, 255, 0.035) 100%
+  );
+  border-color: rgba(120, 200, 255, 0.30);
+}
+.agent-card.kind-shell .agent-name {
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+.agent-shell-prefix {
+  font-family: var(--vscode-editor-font-family, monospace);
+  color: var(--muted);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
 @keyframes stripe-pulse {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.45; }

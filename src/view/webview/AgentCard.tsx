@@ -110,9 +110,32 @@ export function AgentCard({
 
   useEffect(() => { setDraft(agent.name); }, [agent.name]);
 
+  // `r` pressed in the panel: AgentList dispatches `glancer:rename` carrying
+  // the highlighted card's id. Flip into editing mode if it's us — the same
+  // window-event bridge AgentList already uses for `glancer:focus`.
+  useEffect(() => {
+    const onRename = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id;
+      if (id === agent.id) setEditing(true);
+    };
+    window.addEventListener('glancer:rename', onRename);
+    return () => window.removeEventListener('glancer:rename', onRename);
+  }, [agent.id]);
+
   const commit = (next: string) => {
     setEditing(false);
     postToHost({ type: 'rename', id: agent.id, name: next });
+  };
+
+  // After a keyboard-driven rename ends (Enter or Escape), hand focus back
+  // to the panel's nav container so arrow-keys / another `r` work right
+  // away. Deferred a tick so the rename input has fully unmounted first —
+  // focusing synchronously would blur the still-mounted input and fire its
+  // onBlur (a stray commit, and on Escape a save of the cancelled draft).
+  const refocusNav = () => {
+    setTimeout(() => {
+      document.querySelector<HTMLElement>('[data-agent-list-nav]')?.focus();
+    }, 0);
   };
 
   const onContextMenu = (e: React.MouseEvent) => {
@@ -172,10 +195,23 @@ export function AgentCard({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onClick={(e) => e.stopPropagation()}
+            // Pre-select the whole name so a keyboard rename (`r`) can be
+            // typed straight over the top; click or arrow to edit in place.
+            onFocus={(e) => e.currentTarget.select()}
             onBlur={() => commit(draft)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') { e.preventDefault(); commit(draft); }
-              else if (e.key === 'Escape') { e.preventDefault(); setEditing(false); }
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commit(draft);
+                refocusNav();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                // Cancel: drop the draft back to the real name so a
+                // re-open doesn't surface the abandoned text, then exit.
+                setDraft(agent.name);
+                setEditing(false);
+                refocusNav();
+              }
             }}
           />
         ) : (

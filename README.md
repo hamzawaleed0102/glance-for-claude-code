@@ -92,11 +92,13 @@ The whole point of Glance is that you steer a fleet from one panel — no termin
 | Drop back to the panel | `Esc` |
 | Pin / unpin the highlighted agent | `p` `p` (press `p` twice within 400 ms) |
 | New agent | `g` (or `Cmd+Shift+G` again) |
+| New plain shell terminal | `t` |
+| Rename the highlighted card | `r` |
 | Run `/clear` on the highlighted agent | `c` `c` (press `c` twice within 400 ms) |
 | Toggle bottom-panel maximize (full-screen the terminal) | `f` |
 | Kill the highlighted agent | `Cmd+Backspace` / `Ctrl+Backspace` |
 
-Double-click a card title to rename it. Renames are sticky — AI updates won't overwrite a manual title until you `/clear` the session.
+Press `r` with a card highlighted — or double-click a card title — to rename it. The rename box opens with the whole name selected, so you can type straight over it and press `Enter` to save (`Esc` cancels). Renames are sticky — AI updates won't overwrite a manual title until you `/clear` the session.
 
 ## License
 

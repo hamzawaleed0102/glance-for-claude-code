@@ -37,7 +37,7 @@
   "scripts": {
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
-    "test": "node --test out/markers/extractMarkers.test.js out/markers/transcriptWatcher.test.js out/agents/sessionScanner.test.js out/agents/ids.test.js out/agents/pinSort.test.js out/agents/neighborSelection.test.js out/view/webview/reconcileOrder.test.js out/view/webview/flipGeometry.test.js out/agents/shellTitle.test.js",
+    "test": "node --test out/markers/extractMarkers.test.js out/markers/transcriptWatcher.test.js out/agents/sessionScanner.test.js out/agents/ids.test.js out/agents/pinSort.test.js out/agents/neighborSelection.test.js out/view/webview/reconcileOrder.test.js out/view/webview/flipGeometry.test.js out/agents/shellTitle.test.js out/view/webview/agentListKeymap.test.js",
     "fix-pty": "node scripts/fix-pty-perms.mjs",
     "postinstall": "node scripts/fix-pty-perms.mjs",
     "package-platforms": "node scripts/package-platforms.mjs",
@@ -156,7 +156,7 @@
           {
             "id": "more",
             "title": "Keyboard shortcuts",
-            "description": "With the panel focused:\n\n- **↑ / ↓** — cycle agents\n- **Enter** — jump into the highlighted agent's terminal\n- **Esc** — drop back to the panel\n- **g** — spawn a new agent\n- **t** — open a plain shell terminal\n- **c c** (press `c` twice) — run `/clear` (Claude) or clear the scrollback (shell)\n- **f** — toggle bottom-panel maximize (full-screen the terminal)\n- **⌘⌫ / Ctrl+Backspace** — kill the highlighted agent\n- **Double-click** a card title — rename it (sticky until the next `/clear`)\n\nFrom anywhere in VS Code:\n\n- **⌘⇧G / Ctrl+Shift+G** — focus the panel (press again with panel focused = new agent)\n- **⌘⌥N / Ctrl+Alt+N** — new agent without leaving wherever you are\n\nThat's everything. Have fun.",
+            "description": "With the panel focused:\n\n- **↑ / ↓** — cycle agents\n- **Enter** — jump into the highlighted agent's terminal\n- **Esc** — drop back to the panel\n- **g** — spawn a new agent\n- **t** — open a plain shell terminal\n- **c c** (press `c` twice) — run `/clear` (Claude) or clear the scrollback (shell)\n- **f** — toggle bottom-panel maximize (full-screen the terminal)\n- **r** — rename the highlighted card (or double-click its title); sticky until the next `/clear`\n- **⌘⌫ / Ctrl+Backspace** — kill the highlighted agent\n\nFrom anywhere in VS Code:\n\n- **⌘⇧G / Ctrl+Shift+G** — focus the panel (press again with panel focused = new agent)\n- **⌘⌥N / Ctrl+Alt+N** — new agent without leaving wherever you are\n\nThat's everything. Have fun.",
             "media": {
               "image": "resources/readme/notification.png",
               "altText": "Activity-bar badge marking an agent that needs attention"

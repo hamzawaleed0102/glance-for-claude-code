@@ -46,6 +46,8 @@ const testEntries = [
   'src/agents/neighborSelection.test.ts',
   'src/agents/shellTitle.ts',
   'src/agents/shellTitle.test.ts',
+  'src/agents/renameSync.ts',
+  'src/agents/renameSync.test.ts',
   'src/view/webview/reconcileOrder.ts',
   'src/view/webview/reconcileOrder.test.ts',
   'src/view/webview/flipGeometry.ts',

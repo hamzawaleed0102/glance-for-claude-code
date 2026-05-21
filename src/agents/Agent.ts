@@ -4,6 +4,7 @@ import { createClaudePty, type ClaudePty } from './pseudoterminal';
 import { watchState, type StateWatcher, type AgentState } from '../markers/stateWatcher';
 import type { AgentSnapshot, AgentKind, ClaudeModel, TitleSource } from '../shared/messages';
 import type { ManagedAgent } from './ManagedAgent';
+import { decideRename, decideFlush } from './renameSync';
 
 function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
@@ -131,6 +132,17 @@ export class Agent implements vscode.Disposable, ManagedAgent {
   private _skill: string | null = null;
   private _streaming = false;
   private _starting = true;
+  /**
+   * Best-effort "the user has typed into the terminal input box" flag. Set
+   * true on any keystroke via the PTY's `onUserInput`; set false on
+   * UserPromptSubmit and /clear (both empty the box). Gates the `/rename`
+   * terminal echo so Glance never concatenates onto half-typed text.
+   */
+  private _inputDirty = false;
+  /** Latest AI title waiting to be echoed as `/rename` once it is safe. */
+  private _pendingRename: string | null = null;
+  /** Title text of the most recent `/rename` echo Glance sent — loop guard. */
+  private _lastSentRename: string | null = null;
 
   private claude: ClaudePty | null = null;
   private terminal: vscode.Terminal | null = null;
@@ -338,6 +350,11 @@ export class Agent implements vscode.Disposable, ManagedAgent {
       this._starting = false;
       this.changeEmitter.fire({ starting: false });
     });
+    // Any real keystroke into the terminal marks the input box "dirty" so
+    // the /rename echo waits rather than clobbering half-typed text.
+    this.claude.onUserInput(() => {
+      this._inputDirty = true;
+    });
   }
 
   /**
@@ -358,6 +375,10 @@ export class Agent implements vscode.Disposable, ManagedAgent {
       // already disposed by VS Code on shutdown
     }
     this.terminal = null;
+    // The rename-echo fields (_pendingRename, _lastSentRename, _inputDirty)
+    // intentionally survive dormancy — the conversation is unchanged, so a
+    // revive()'d agent keeps its loop guard. They reset only on /clear via
+    // resetCardState.
     if (this._streaming) {
       this._streaming = false;
       this.changeEmitter.fire({ streaming: false });
@@ -425,6 +446,10 @@ export class Agent implements vscode.Disposable, ManagedAgent {
    */
   resetCardState(): void {
     const patch: Partial<AgentSnapshot> = {};
+    // The /rename echo state is per-conversation — /clear starts a new one.
+    this._pendingRename = null;
+    this._lastSentRename = null;
+    this._inputDirty = false;
     const defaultName = 'Glance';
     if (this._name !== defaultName || this._titleSource !== 'default') {
       this._name = defaultName;
@@ -486,6 +511,10 @@ export class Agent implements vscode.Disposable, ManagedAgent {
     }
     if (Object.keys(patch).length > 0) this.changeEmitter.fire(patch);
     this.turnCompleteEmitter.fire();
+    // Flush is tied to the real Stop hook only — the Notification-driven
+    // setNeedsAttention path deliberately does NOT flush, so a queued
+    // rename waits for a genuine turn-complete rather than an idle ping.
+    this.flushPendingRename();
   }
 
   /**
@@ -543,6 +572,9 @@ export class Agent implements vscode.Disposable, ManagedAgent {
     // there's no idle-timer fallback, so an agent that crashes mid-turn
     // would stay pulsing. That's an acceptable trade for not having the
     // bubble flicker every time the user types a character.
+    // A submitted prompt empties the input box — the /rename echo is safe
+    // to send again.
+    this._inputDirty = false;
     const patch: Partial<AgentSnapshot> = {};
     if (this._tldr !== null) {
       this._tldr = null;
@@ -627,9 +659,10 @@ export class Agent implements vscode.Disposable, ManagedAgent {
    * keyboard focus into it so the user lands ready to type. Wired to
    * the `c c` chord on the focused agent panel.
    *
-   * `Terminal.sendText` calls our pseudoterminal's `handleInput`, which
-   * forwards to node-pty's `write` — Claude sees `/clear<Enter>` exactly
-   * as if the user typed it.
+   * Uses `claude.sendInput` (a direct PTY write) rather than
+   * `terminal.sendText` — `sendText` routes through `handleInput`, which
+   * would falsely mark the input box dirty for the /rename echo. The PTY
+   * still sees `/clear<Enter>` exactly as if the user typed it.
    *
    * We also call `resetCardState` directly here instead of waiting for
    * Claude's `SessionStart` hook to round-trip — we know /clear is
@@ -641,8 +674,65 @@ export class Agent implements vscode.Disposable, ManagedAgent {
    */
   clearActive(): void {
     this.focusTerminal();
-    this.terminal?.sendText('/clear');
+    this.claude?.sendInput('/clear\r');
     this.resetCardState();
+  }
+
+  /**
+   * Echo `/rename <title>` into the terminal when Claude assigns a new AI
+   * title — but only when it is safe (Claude idle, input box clean). When
+   * unsafe, the title is queued and `flushPendingRename` retries on the next
+   * Stop. See docs/superpowers/specs/2026-05-21-terminal-rename-echo-design.md.
+   *
+   * `/rename` is not a Claude slash command — this is a deliberate, visible
+   * echo in the conversation, not a real session rename.
+   */
+  private maybeSendRename(title: string): void {
+    const decision = decideRename({
+      title,
+      streaming: this._streaming,
+      inputDirty: this._inputDirty,
+      lastSent: this._lastSentRename,
+    });
+    if (decision === 'send') {
+      this.sendRename(title);
+    } else if (decision === 'queue') {
+      this._pendingRename = title;
+    }
+    // 'skip' — already echoed this exact title; do nothing.
+  }
+
+  /** Flush a queued `/rename` echo once a turn completes, if now safe. */
+  private flushPendingRename(): void {
+    const pending = this._pendingRename;
+    const decision = decideFlush({
+      pending,
+      inputDirty: this._inputDirty,
+      lastSent: this._lastSentRename,
+    });
+    if (decision === 'send' && pending !== null) {
+      this.sendRename(pending);
+      this._pendingRename = null;
+    } else if (decision === 'skip') {
+      // Per decideFlush's caller contract: clear the queue even when
+      // skipping, so an already-echoed title can't stay queued forever.
+      this._pendingRename = null;
+    }
+    // 'queue' — keep _pendingRename; a later Stop retries.
+  }
+
+  /**
+   * Write `/rename <title>` + Enter straight to the PTY via `sendInput`
+   * (bypassing handleInput, so it is not counted as user typing). Strips any
+   * CR/LF from the title so the line submits exactly once.
+   */
+  private sendRename(title: string): void {
+    const clean = title.replace(/[\r\n]+/g, ' ').trim();
+    if (clean.length === 0) return;
+    this.claude?.sendInput(`/rename ${clean}\r`);
+    // store the raw (pre-clean) title — decideRename/decideFlush compare
+    // against this same raw value
+    this._lastSentRename = title;
   }
 
   snapshot(): AgentSnapshot {
@@ -721,6 +811,7 @@ export class Agent implements vscode.Disposable, ManagedAgent {
         patch.name = next;
         patch.titleSource = 'ai';
         this.claude?.setName(next);
+        this.maybeSendRename(next);
       }
     }
     if ('needsInput' in s && s.needsInput !== undefined) {

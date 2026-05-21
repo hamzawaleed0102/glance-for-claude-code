@@ -72,6 +72,10 @@
         "title": "Glance: New Agent"
       },
       {
+        "command": "glancer.newTerminal",
+        "title": "Glance: New Terminal"
+      },
+      {
         "command": "glancer.killActive",
         "title": "Glance: Kill Active Agent"
       },

@@ -5,31 +5,25 @@ import { AgentList } from './AgentList';
 import { OldSessionsPicker } from './OldSessionsPicker';
 import { listenFromHost, postToHost } from './api';
 
-// Lazily-created shared AudioContext — re-used across tones so we don't
-// leak audio contexts or hit per-document limits. Some browsers gate
-// audio behind a user gesture; the user opening Glancer + their first
-// prompt submit counts.
-let audioCtx: AudioContext | null = null;
+// The turn-complete sound. The audio file (mixkit-correct-answer-tone)
+// ships in the extension bundle at out/webview/; the host resolves its
+// webview URI and bakes it into the <audio id="completion-sound">
+// element in index.html. Here we just rewind it and play.
 function playAttentionTone() {
   try {
-    if (!audioCtx) audioCtx = new AudioContext();
-    if (audioCtx.state === 'suspended') void audioCtx.resume();
-    const ctx = audioCtx;
-    const now = ctx.currentTime;
-    // Minimal single-note beep: A5 sine, ~90ms total with quick attack
-    // and exponential decay. Soft so it's not jarring across many turns.
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, now);
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.08, now + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.1);
+    const el = document.getElementById(
+      'completion-sound',
+    ) as HTMLAudioElement | null;
+    if (!el) return;
+    el.volume = 0.5;
+    el.currentTime = 0;
+    // play() *rejects* (it does not throw) when autoplay is blocked, so
+    // the surrounding try/catch can't see it — swallow the rejection so
+    // it never surfaces as an unhandled promise. The VS Code toast still
+    // tells the user the turn finished.
+    void el.play().catch(() => {});
   } catch {
-    // Audio unavailable / autoplay blocked — VS Code toast still surfaces.
+    // Audio element missing / unavailable — VS Code toast still surfaces.
   }
 }
 
@@ -37,6 +31,13 @@ function App() {
   const [agents, setAgents] = useState<AgentSnapshot[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [oldSessions, setOldSessions] = useState<OldSession[] | null>(null);
+  // Whether keyboard focus is currently inside the panel iframe. Drives
+  // the active card's two looks: focused → "selected" (you're navigating
+  // the panel), blurred → "terminal-focused" (you pressed Enter and
+  // dropped into the session's terminal). Seeded from document.hasFocus()
+  // so the first render is right even when Glance auto-spawned straight
+  // into a terminal and the panel never held focus.
+  const [panelFocused, setPanelFocused] = useState(() => document.hasFocus());
 
   // Dispatch `glancer:focus` whenever the webview iframe gains focus. VS
   // Code's built-in `glancer.agents.focus` command routes focus to the
@@ -49,10 +50,14 @@ function App() {
   // can suppress turn-complete toasts when the user is already watching.
   useEffect(() => {
     const onFocus = () => {
+      setPanelFocused(true);
       window.dispatchEvent(new Event('glancer:focus'));
       postToHost({ type: 'panelFocus', focused: true });
     };
-    const onBlur = () => postToHost({ type: 'panelFocus', focused: false });
+    const onBlur = () => {
+      setPanelFocused(false);
+      postToHost({ type: 'panelFocus', focused: false });
+    };
     window.addEventListener('focus', onFocus);
     window.addEventListener('blur', onBlur);
     if (document.hasFocus()) {
@@ -141,6 +146,7 @@ function App() {
       <AgentList
         agents={agents}
         activeId={activeId}
+        panelFocused={panelFocused}
         onSelect={(id) => postToHost({ type: 'select', id })}
         onKill={(id) => postToHost({ type: 'kill', id })}
       />

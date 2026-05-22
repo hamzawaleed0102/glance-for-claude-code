@@ -1,5 +1,6 @@
 .vscode/**
 .vscode-test/**
+.claude/**
 src/**
 node_modules/**
 !node_modules/node-pty/**
@@ -24,4 +25,5 @@ scripts/render-icon-png.mjs
 
 docs/**
 media/walkthrough/*.svg
+media/mixkit-correct-answer-tone-2870.wav
 scripts/render-walkthrough-pngs.mjs

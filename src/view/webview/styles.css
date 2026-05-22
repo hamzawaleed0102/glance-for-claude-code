@@ -34,7 +34,13 @@ body {
 }
 
 /* Panel chrome */
-.agent-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; outline: none; }
+.agent-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; outline: none; transition: box-shadow 120ms ease; }
+/* Focus affordance: a slight inset border around the whole panel while
+ * focus is anywhere inside it, so the user can see it's the active region
+ * for keyboard nav. Inset box-shadow (not `border`) keeps it layout-shift
+ * free; `:focus-within` (not `:focus`) keeps it lit through rename/filter
+ * inputs rather than dropping the moment focus enters a child. */
+.agent-panel:focus-within { box-shadow: inset 0 0 0 1px var(--accent); }
 .panel-header {
   display: flex;
   justify-content: space-between;
@@ -140,22 +146,49 @@ body {
   transform: translateY(-1px);
 }
 
+/* The active card has TWO looks, so the user can tell selection apart
+ * from actually being inside the session's terminal:
+ *
+ *  - .active alone — the card is selected, keyboard focus is still in
+ *    the panel (arrow-nav / click). A blue accent outline, the editor's
+ *    own focus colour, reads as "selected — press Enter to drop in".
+ *  - .active.terminal-focused — the user pressed Enter, focus left the
+ *    panel into this session's terminal. A bright white solid fill with
+ *    a layered halo and a fat left rail makes it an unmistakable "you
+ *    are working in here" beacon even while the panel itself is blurred.
+ *
+ * The card's `transition` covers background/border/box-shadow, so the
+ * blue↔white morph animates smoothly as focus crosses the panel edge. */
 .agent-card.active {
+  background: linear-gradient(
+    180deg,
+    rgba(99, 162, 255, 0.20) 0%,
+    rgba(99, 162, 255, 0.06) 100%
+  );
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.agent-card.active::before { width: 5px; }
+.agent-card.active .agent-name { color: #ffffff; font-weight: 700; }
+
+.agent-card.active.terminal-focused {
   background: linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.22) 0%,
     rgba(255, 255, 255, 0.10) 100%
   );
-  border-color: rgba(255, 255, 255, 0.75);
-  /* Layered ring: a hard 1px inner accent, a soft 4px halo, and a
-   * deeper drop shadow lift the active card off the surrounding rows. */
+  border-color: rgba(255, 255, 255, 0.80);
+  /* Layered ring: a hard 1px inner edge, a soft 4px halo, and a deep
+   * drop shadow lift the in-terminal card well off the surrounding rows. */
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.55),
-    0 0 0 4px rgba(255, 255, 255, 0.14),
-    0 6px 18px rgba(0, 0, 0, 0.40);
+    0 0 0 1px rgba(255, 255, 255, 0.62),
+    0 0 0 4px rgba(255, 255, 255, 0.16),
+    0 6px 20px rgba(0, 0, 0, 0.48);
 }
-.agent-card.active::before { width: 5px; }
-.agent-card.active .agent-name { color: #ffffff; font-weight: 700; }
+/* Fat solid left rail — the clearest at-a-glance "this is the live one". */
+.agent-card.active.terminal-focused::before { width: 7px; }
 .agent-card.starting { opacity: 0.85; }
 
 /* Drag-and-drop visual states. */
@@ -432,74 +465,39 @@ body {
   background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.08));
 }
 
-/* Footer — "+ New Session" with model-picker chevron */
-.new-agent-btn {
-  display: flex;
-  padding: 10px;
-  border-top: 1px solid var(--border);
+/* Model picker — a chevron icon-button beside the header "+" that opens
+ * a small menu to spawn a new session with a specific model. The wrapper
+ * is the positioning anchor for the absolutely-placed dropdown. */
+.model-picker-wrap {
   position: relative;
-  gap: 0;
-}
-.new-agent-btn-main,
-.new-agent-btn-chevron {
-  background: linear-gradient(180deg, #2a6cf0 0%, #1b54c8 100%);
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  cursor: pointer;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  transition: background 140ms ease, transform 80ms ease,
-    box-shadow 140ms ease, border-color 140ms ease;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.10) inset,
-    0 4px 12px rgba(20, 60, 180, 0.35);
-}
-.new-agent-btn-main {
-  flex: 1;
-  padding: 8px 12px;
-  font-size: 12.5px;
-  border-right: none;
-  border-radius: 6px 0 0 6px;
-}
-.new-agent-btn-chevron {
-  width: 30px;
-  padding: 0;
-  font-size: 14px;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-left: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 0 6px 6px 0;
 }
-.new-agent-btn-chevron .chev {
+.model-picker-btn .chev {
   /* SVG chevron — crisper than the unicode glyph and styleable. */
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
   display: inline-block;
   transition: transform 160ms ease;
 }
-.new-agent-btn-main:hover,
-.new-agent-btn-chevron:hover {
-  background: linear-gradient(180deg, #3a7cff 0%, #2562d6 100%);
-  border-color: rgba(255, 255, 255, 0.22);
+/* Keep the trigger visibly pressed while its menu is open. */
+.model-picker-btn.open {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border);
 }
-.new-agent-btn-main:active,
-.new-agent-btn-chevron:active {
-  transform: translateY(1px);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.10) inset,
-    0 2px 6px rgba(20, 60, 180, 0.25);
-}
-.new-agent-btn-chevron.open .chev { transform: rotate(180deg); }
+.model-picker-btn.open .chev { transform: rotate(180deg); }
 .model-picker {
   position: absolute;
-  bottom: 100%;
-  left: 8px;
-  right: 8px;
-  background: var(--vscode-menu-background);
-  border: 1px solid var(--border);
-  border-radius: 3px;
+  /* Drops down from under the header chevron, right-aligned to it. */
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 168px;
+  background: var(--vscode-menu-background, #1b1b1b);
+  color: var(--vscode-menu-foreground);
+  border: 1px solid var(--vscode-menu-border, var(--border));
+  border-radius: 6px;
   overflow: hidden;
+  z-index: 50;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 .model-picker button {
   display: block;
@@ -508,7 +506,9 @@ body {
   color: var(--vscode-menu-foreground);
   border: none;
   text-align: left;
-  padding: 6px 10px;
+  padding: 7px 12px;
+  font-size: 12px;
+  white-space: nowrap;
   cursor: pointer;
 }
 .model-picker button:hover {

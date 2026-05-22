@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { contentRelativeTop } from './flipGeometry';
+import { contentRelativeTop, parseTranslateY } from './flipGeometry';
 
 // The FLIP reorder animation must measure a card's position relative to
 // the scroll container's *content*, not the viewport. Otherwise a
@@ -40,4 +40,46 @@ test('accounts for the list box itself moving (panel resize)', () => {
   // not move within the content.
   const after = contentRelativeTop(340, 140, 0);
   assert.equal(before, after);
+});
+
+// parseTranslateY recovers the FLIP transform offset off a computed
+// `transform` string so a measurement taken mid-animation can be
+// corrected back to the card's settled layout position. Without this a
+// commit landing inside the 220ms reorder window (delete → active-id
+// change, or a streaming update_state) misreads the animated offset as a
+// reorder — the "delete a card, neighbours jerk" bug.
+
+test('parseTranslateY: "none" yields zero', () => {
+  assert.equal(parseTranslateY('none'), 0);
+});
+
+test('parseTranslateY: empty string yields zero', () => {
+  assert.equal(parseTranslateY(''), 0);
+});
+
+test('parseTranslateY: reads ty from a 2D matrix()', () => {
+  // matrix(a, b, c, d, tx, ty) — a mid-FLIP card sliding up 60px.
+  assert.equal(parseTranslateY('matrix(1, 0, 0, 1, 0, 60)'), 60);
+});
+
+test('parseTranslateY: reads a negative / fractional ty from matrix()', () => {
+  // Mid-transition the transitioned value is fractional, often negative.
+  assert.equal(parseTranslateY('matrix(1, 0, 0, 1, 0, -23.5)'), -23.5);
+});
+
+test('parseTranslateY: ignores tx (horizontal translation)', () => {
+  assert.equal(parseTranslateY('matrix(1, 0, 0, 1, 40, 12)'), 12);
+});
+
+test('parseTranslateY: reads ty from matrix3d()', () => {
+  // matrix3d is column-major 4x4 — translateY is the 14th value.
+  const m3d =
+    'matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 75, 0, 1)';
+  assert.equal(parseTranslateY(m3d), 75);
+});
+
+test('parseTranslateY: unrecognised transform yields zero (no false delta)', () => {
+  // A non-matrix transform (or garbage) must not be read as a move,
+  // otherwise it would feed a bogus FLIP delta and snap the card.
+  assert.equal(parseTranslateY('rotate(5deg)'), 0);
 });

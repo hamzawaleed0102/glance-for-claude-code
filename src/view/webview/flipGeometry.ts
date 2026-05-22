@@ -29,3 +29,49 @@ export function contentRelativeTop(
 ): number {
   return cardViewportTop - listViewportTop + listScrollTop;
 }
+
+/**
+ * The vertical translation, in pixels, encoded in a CSS computed
+ * `transform` string.
+ *
+ * The FLIP reorder animation measures each card with
+ * `getBoundingClientRect()`, which reports the card's *rendered* position
+ * — its layout box PLUS any transform currently applied. When a render
+ * commits while a previous reorder's `translateY` is still mid-transition
+ * (an agent card is deleted, then the active-id change commits a frame
+ * later; or a streaming `update_state` lands inside the reorder window),
+ * the raw measurement reads that transient animated offset as the card's
+ * real position. That feeds a bogus delta — snapping the in-flight
+ * animation and polluting the stored positions, so every later commit
+ * (including arrow-key navigation) keeps jerking until a transform-free
+ * commit re-syncs.
+ *
+ * Subtracting this value off `getBoundingClientRect().top` recovers the
+ * settled layout position, making the FLIP measurement invariant to any
+ * animation in flight — the same role `contentRelativeTop` plays for
+ * in-flight scrolling.
+ *
+ * Pure string parsing (deliberately not `DOMMatrix`, which Node lacks) so
+ * the property is unit-testable under `node --test` without a DOM.
+ *
+ * @param transform  a computed `transform` value: `none`,
+ *                    `matrix(a,b,c,d,tx,ty)`, or `matrix3d(…16 values…)`
+ */
+export function parseTranslateY(transform: string): number {
+  if (!transform || transform === 'none') return 0;
+  // matrix(a, b, c, d, tx, ty) — translateY is the 6th (last) value.
+  const m2d = transform.match(/^matrix\(([^)]+)\)$/);
+  if (m2d) {
+    const parts = m2d[1].split(',').map((n) => parseFloat(n));
+    return parts.length === 6 && Number.isFinite(parts[5]) ? parts[5] : 0;
+  }
+  // matrix3d is a column-major 4×4 — translateY is the 14th value.
+  const m3d = transform.match(/^matrix3d\(([^)]+)\)$/);
+  if (m3d) {
+    const parts = m3d[1].split(',').map((n) => parseFloat(n));
+    return parts.length === 16 && Number.isFinite(parts[13]) ? parts[13] : 0;
+  }
+  // Anything else (a non-matrix transform, garbage) is not a vertical
+  // move — return 0 rather than risk feeding a false delta.
+  return 0;
+}

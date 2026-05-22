@@ -2,51 +2,37 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { decideRename, decideFlush } from './renameSync';
 
-test('decideRename sends when idle and input clean', () => {
+test('decideRename sends when the input box is clean', () => {
   assert.equal(
-    decideRename({ title: 'Auth bug', streaming: false, inputDirty: false, lastSent: null }),
+    decideRename({ title: 'Auth bug', inputDirty: false, lastSent: null }),
     'send',
-  );
-});
-
-test('decideRename queues while Claude is streaming', () => {
-  assert.equal(
-    decideRename({ title: 'Auth bug', streaming: true, inputDirty: false, lastSent: null }),
-    'queue',
   );
 });
 
 test('decideRename queues when the user has typed into the box', () => {
   assert.equal(
-    decideRename({ title: 'Auth bug', streaming: false, inputDirty: true, lastSent: null }),
-    'queue',
-  );
-});
-
-test('decideRename queues when both streaming and inputDirty are true', () => {
-  assert.equal(
-    decideRename({ title: 'Auth bug', streaming: true, inputDirty: true, lastSent: null }),
+    decideRename({ title: 'Auth bug', inputDirty: true, lastSent: null }),
     'queue',
   );
 });
 
 test('decideRename skips a title already echoed', () => {
   assert.equal(
-    decideRename({ title: 'Auth bug', streaming: false, inputDirty: false, lastSent: 'Auth bug' }),
+    decideRename({ title: 'Auth bug', inputDirty: false, lastSent: 'Auth bug' }),
     'skip',
   );
 });
 
-test('decideRename skips a title already echoed even while streaming', () => {
+test('decideRename skips an already-echoed title even when the box is dirty', () => {
   assert.equal(
-    decideRename({ title: 'Auth bug', streaming: true, inputDirty: false, lastSent: 'Auth bug' }),
+    decideRename({ title: 'Auth bug', inputDirty: true, lastSent: 'Auth bug' }),
     'skip',
   );
 });
 
 test('decideRename re-sends a title that differs from the last echoed', () => {
   assert.equal(
-    decideRename({ title: 'Auth bug fix', streaming: false, inputDirty: false, lastSent: 'Auth bug' }),
+    decideRename({ title: 'Auth bug fix', inputDirty: false, lastSent: 'Auth bug' }),
     'send',
   );
 });

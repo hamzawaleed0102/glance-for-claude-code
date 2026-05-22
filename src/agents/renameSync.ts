@@ -6,7 +6,7 @@
  * into the input box. These two pure functions encode "is it safe?" so the
  * stateful Agent stays thin and the logic is unit-testable.
  *
- * See docs/superpowers/specs/2026-05-21-terminal-rename-echo-design.md.
+ * See docs/superpowers/specs/2026-05-21-instant-rename-echo-design.md.
  */
 
 /** What the Agent should do with a candidate rename. */

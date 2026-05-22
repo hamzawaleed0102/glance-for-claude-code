@@ -716,7 +716,8 @@ export class Agent implements vscode.Disposable, ManagedAgent {
       // skipping, so an already-echoed title can't stay queued forever.
       this._pendingRename = null;
     }
-    // 'queue' — keep _pendingRename; a later Stop retries.
+    // 'queue' — unreachable here (clearTransient clears _inputDirty before
+    // calling); the no-op branch keeps decideFlush's full contract handled.
   }
 
   /**

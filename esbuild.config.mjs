@@ -30,12 +30,12 @@ const webviewConfig = {
   jsx: 'automatic',
 };
 
-// Tests + transcript watcher: compiled per-file so node:test can load them as CJS.
+// Test sources + their non-test deps: compiled per-file so node:test loads them as CJS.
 const testEntries = [
-  'src/markers/extractMarkers.ts',
-  'src/markers/extractMarkers.test.ts',
-  'src/markers/transcriptWatcher.ts',
-  'src/markers/transcriptWatcher.test.ts',
+  'src/server/mcpHandler.ts',
+  'src/server/mcpHandler.test.ts',
+  'src/server/GlanceServer.ts',
+  'src/server/GlanceServer.test.ts',
   'src/agents/sessionScanner.ts',
   'src/agents/sessionScanner.test.ts',
   'src/agents/ids.ts',
@@ -74,14 +74,18 @@ function copyStatic() {
   if (fs.existsSync('src/view/webview/styles.css')) {
     fs.copyFileSync('src/view/webview/styles.css', 'out/webview/styles.css');
   }
+  // Turn-complete sound — copied into the webview bundle so the host can
+  // resolve it via asWebviewUri, and so it ships inside the .vsix.
+  if (fs.existsSync('media/mixkit-correct-answer-tone-2870.wav')) {
+    fs.copyFileSync(
+      'media/mixkit-correct-answer-tone-2870.wav',
+      'out/webview/mixkit-correct-answer-tone-2870.wav',
+    );
+  }
   fs.mkdirSync('out/markers', { recursive: true });
   if (fs.existsSync('src/markers/hook.mjs')) {
     fs.copyFileSync('src/markers/hook.mjs', 'out/markers/hook.mjs');
     fs.chmodSync('out/markers/hook.mjs', 0o755);
-  }
-  if (fs.existsSync('src/markers/mcp-server.mjs')) {
-    fs.copyFileSync('src/markers/mcp-server.mjs', 'out/markers/mcp-server.mjs');
-    fs.chmodSync('out/markers/mcp-server.mjs', 0o755);
   }
 }
 

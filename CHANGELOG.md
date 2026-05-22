@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.29 — 2026-05-22
+
+- **Internal: agent state and hooks now flow through an in-process HTTP server.** MCP `update_state` calls and Claude Code hook events post directly into the extension over a localhost-only HTTP server, replacing the file-drop + `chokidar` watcher pipeline. This drops the `mcp-server.mjs` child process, both file watchers, the 250 ms polling lag, and the `chokidar` dependency — and fixes a class of bug where a lost hook event left a card stuck showing a finished turn while Claude was still working.
+
 ## 0.0.28 — 2026-05-22
 
 - **Polish: the session rename now lands instantly.** The `/rename` that syncs a session to its card title is sent the moment Claude assigns the title, instead of waiting for the turn to finish. If you're part-way through typing a message, it still holds until you've sent what you typed.

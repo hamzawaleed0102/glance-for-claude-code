@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import { createClaudePty, type ClaudePty } from './pseudoterminal';
-import { watchState, type StateWatcher, type AgentState } from '../markers/stateWatcher';
+import type { AgentState } from '../server/mcpHandler';
 import type { AgentSnapshot, AgentKind, ClaudeModel, TitleSource } from '../shared/messages';
 import type { ManagedAgent } from './ManagedAgent';
 import { decideRename, decideFlush } from './renameSync';
@@ -63,14 +63,12 @@ export interface AgentInit {
   cwd: string;
   model: ClaudeModel;
   hookSettingsPath: string;
-  /**
-   * JSON file registering the Glancer MCP server. The server returns its
-   * Glancer system instructions in the MCP `initialize` response, so the
-   * prompt never appears on the claude CLI — no shell echo to worry about.
-   */
+  /** Per-agent JSON file registering the Glance MCP server (http transport). */
   mcpConfigPath: string;
-  eventsDir: string;
-  hookScriptPath: string;
+  /** The live in-process MCP/hook server — read at spawn time for port + token. */
+  server: { readonly port: number; readonly token: string };
+  /** Directory hook.mjs writes its debug log into. */
+  logDir: string;
   /**
    * Absolute path of the per-agent JSON status file Claude maintains via the
    * `glancer_update_state` MCP tool. The extension watches this file to
@@ -146,7 +144,6 @@ export class Agent implements vscode.Disposable, ManagedAgent {
 
   private claude: ClaudePty | null = null;
   private terminal: vscode.Terminal | null = null;
-  private stateWatcher: StateWatcher;
   private readonly stateFilePath: string;
   private readonly init: AgentInit;
   private _sessionId: string | null = null;
@@ -253,12 +250,15 @@ export class Agent implements vscode.Disposable, ManagedAgent {
 
     if (!this._dormant) this.spawn();
 
-    // Always watch the state file. For dormant agents it reads back the
-    // persisted markers from the last session. For live agents it picks up
-    // updates from Claude's MCP tool calls.
-    this.stateWatcher = watchState(this.stateFilePath, (state) =>
-      this.applyState(state),
-    );
+    // Seed the card from the persisted state file once. Dormant agents
+    // restore their last-known markers this way; live agents thereafter
+    // receive updates directly via applyState() from the HTTP server.
+    try {
+      const raw = fs.readFileSync(this.stateFilePath, 'utf8').trim();
+      if (raw.length > 0) this.applyState(JSON.parse(raw) as AgentState);
+    } catch {
+      // No prior state file — fresh agent. Expected.
+    }
   }
 
   /**
@@ -270,6 +270,24 @@ export class Agent implements vscode.Disposable, ManagedAgent {
     // we're about to create is a fresh subject for user-close detection.
     this._selfDisposing = false;
     const init = this.init;
+
+    // Write this agent's MCP config: an http-transport server entry pointing
+    // at the extension's in-process GlanceServer, scoped to this agent id.
+    const mcpConfig = {
+      mcpServers: {
+        glancer: {
+          type: 'http',
+          url: `http://127.0.0.1:${init.server.port}/mcp/${init.id}`,
+          headers: { Authorization: `Bearer ${init.server.token}` },
+        },
+      },
+    };
+    try {
+      fs.writeFileSync(init.mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
+    } catch (err) {
+      console.warn('[glancer] failed to write mcp config', err);
+    }
+
     const modelFlag = init.model === 'default' ? '' : ` --model ${init.model}`;
     // `--resume <id>` reconnects to the prior conversation. Only emitted
     // when we have a sessionId from a previous run; fresh agents start a
@@ -291,10 +309,9 @@ export class Agent implements vscode.Disposable, ManagedAgent {
       shell: defaultShell(),
       env: {
         ...process.env,
-        GLANCER_AGENT_ID: init.id,
-        GLANCER_EVENTS_DIR: init.eventsDir,
-        GLANCER_HOOK_SCRIPT: init.hookScriptPath,
-        GLANCER_STATE_FILE: this.stateFilePath,
+        GLANCER_HOOK_URL: `http://127.0.0.1:${init.server.port}/hook/${init.id}`,
+        GLANCER_TOKEN: init.server.token,
+        GLANCER_LOG_DIR: init.logDir,
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
       },
@@ -355,6 +372,9 @@ export class Agent implements vscode.Disposable, ManagedAgent {
     this.claude.onUserInput(() => {
       this._inputDirty = true;
     });
+    // ESC during a streaming turn is Claude Code's interrupt gesture. No
+    // Stop hook fires for an interrupt, so clear the working indicator here.
+    this.claude.onInterruptKey(() => this.notifyInterrupted());
   }
 
   /**
@@ -511,6 +531,18 @@ export class Agent implements vscode.Disposable, ManagedAgent {
     }
     if (Object.keys(patch).length > 0) this.changeEmitter.fire(patch);
     this.turnCompleteEmitter.fire();
+  }
+
+  /**
+   * The user pressed ESC to interrupt the turn. Claude Code fires no Stop
+   * hook on an interrupt, so without this the card would stay stuck on the
+   * working indicator. Flip streaming off — no toast/tone, since an
+   * interrupt is not a clean finish.
+   */
+  notifyInterrupted(): void {
+    if (!this._streaming) return;
+    this._streaming = false;
+    this.changeEmitter.fire({ streaming: false });
   }
 
   /**
@@ -759,7 +791,6 @@ export class Agent implements vscode.Disposable, ManagedAgent {
    * next launch can restore the agent's last-known markers from the file.
    */
   dispose(): void {
-    this.stateWatcher.dispose();
     this.claude?.dispose();
     this._selfDisposing = true;
     this.terminal?.dispose();
@@ -788,7 +819,7 @@ export class Agent implements vscode.Disposable, ManagedAgent {
    *   - explicit null → clear
    *   - value → set
    */
-  private applyState(s: AgentState): void {
+  applyState(s: AgentState): void {
     const patch: Partial<AgentSnapshot> = {};
 
     if ('tldr' in s && s.tldr !== undefined) {

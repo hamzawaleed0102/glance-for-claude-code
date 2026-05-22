@@ -37,6 +37,11 @@ export interface ClaudePty {
    */
   onUserInput: vscode.Event<void>;
   /**
+   * Fires when the user presses a bare ESC key — Claude Code's interrupt
+   * gesture. Lets the consumer clear "working" state on an interrupted turn.
+   */
+  onInterruptKey: vscode.Event<void>;
+  /**
    * Write text straight to the underlying PTY, bypassing the `handleInput`
    * path. Used for extension-injected input (slash commands) so it is never
    * mistaken for the user typing. Include a trailing `\r` to submit.
@@ -116,6 +121,7 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
   const nameEmitter = new vscode.EventEmitter<string>();
   const closeRequestEmitter = new vscode.EventEmitter<void>();
   const userInputEmitter = new vscode.EventEmitter<void>();
+  const interruptKeyEmitter = new vscode.EventEmitter<void>();
 
   let proc: pty.IPty | null = null;
   let cols = 100;
@@ -272,6 +278,11 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
       // Fire regardless of `proc` state: a keystroke that didn't reach the
       // PTY (proc null / exited) still counts as the user touching the box.
       userInputEmitter.fire();
+      // A bare ESC byte is the Escape key — Claude Code's interrupt. Special
+      // keys (arrows, F-keys) arrive as multi-byte ESC sequences, so an exact
+      // `\x1b` is unambiguous. Used to clear the working indicator when a
+      // turn is interrupted (Claude Code fires no Stop hook on interrupt).
+      if (data === '\x1b') interruptKeyEmitter.fire();
     },
     setDimensions(dim) {
       cols = Math.max(20, dim.columns);
@@ -291,6 +302,7 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
     onStartupComplete: startupCompleteEmitter.event,
     onCloseRequested: closeRequestEmitter.event,
     onUserInput: userInputEmitter.event,
+    onInterruptKey: interruptKeyEmitter.event,
     sendInput(text: string) {
       proc?.write(text);
     },
@@ -312,6 +324,7 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
       nameEmitter.dispose();
       closeRequestEmitter.dispose();
       userInputEmitter.dispose();
+      interruptKeyEmitter.dispose();
     },
   };
 }

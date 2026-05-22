@@ -70,10 +70,10 @@ export interface AgentInit {
   /** Directory hook.mjs writes its debug log into. */
   logDir: string;
   /**
-   * Absolute path of the per-agent JSON status file Claude maintains via the
-   * `glancer_update_state` MCP tool. The extension watches this file to
-   * drive the agent card — see `stateWatcher.ts` and `summarySystemPrompt`
-   * for the contract.
+   * Absolute path of the per-agent JSON status file. The extension writes a
+   * merged snapshot here on every `update_state` call (see
+   * `AgentManager.applyAgentState`); a dormant agent re-seeds its card from
+   * it once, in the Agent constructor.
    */
   stateFilePath: string;
   /**

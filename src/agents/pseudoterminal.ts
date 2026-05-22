@@ -19,7 +19,7 @@ export interface ClaudePty {
    * Fires once when Claude's TUI has finished booting (alt-screen entered)
    * or the 2s fallback elapses. Until then the terminal display is held on a
    * "starting session…" placeholder so the user never sees the shell echo of
-   * the `claude --append-system-prompt …` invocation.
+   * the `claude …` launch command.
    */
   onStartupComplete: vscode.Event<void>;
   /**
@@ -130,7 +130,7 @@ export function createClaudePty(opts: ClaudePtyOpts): ClaudePty {
 
   // Phase machine: buffer PTY output until Claude enters alt-screen, then
   // emit only the alt-screen-onward portion to the VS Code terminal. This
-  // hides the shell echo of `clear && claude --append-system-prompt …` from
+  // hides the shell echo of the `clear && claude …` launch command from
   // the user.
   let phase: 'starting' | 'ready' = 'starting';
   let startupBuf = '';

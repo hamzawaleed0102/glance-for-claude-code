@@ -87,10 +87,9 @@ export class AgentManager implements vscode.Disposable {
     // in globalStorage they'd collide: Window 2's brand-new AG-01 would
     // write into the same state file Window 1's AG-01 watches, and the
     // card snapshots would swap across windows. Workspace-scoping fixes
-    // that by giving every workspace its own state/ and events/ tree.
-    // Binaries (hook.mjs / mcp-server.mjs / glancer-instructions.txt /
-    // hook-settings.json / mcp-config.json) stay global — they're
-    // install-once and don't carry per-agent state.
+    // that by giving every workspace its own state/ tree.
+    // hook.mjs and hook-settings.json stay global — install-once, no
+    // per-agent state. (Per-agent mcp-config files are written at spawn.)
     const wsStorageDir = init.context.storageUri?.fsPath ?? null;
     const dataDir = wsStorageDir ?? this.storageDir;
     if (wsStorageDir) fs.mkdirSync(wsStorageDir, { recursive: true });
@@ -443,12 +442,10 @@ export class AgentManager implements vscode.Disposable {
       });
       this.agents.set(e.id, agent);
     }
-    // Dormant agents' stateWatchers fire applyState asynchronously as
-    // chokidar's polling kicks in. The change listener will re-emit on
-    // each of those, but we also publish a one-shot snapshot here so
-    // the badge is correct the moment the webview first resolves —
-    // even if no stateWatcher fires (e.g. dormant agent with no
-    // persisted state file).
+    // Dormant agents seed their card synchronously in the Agent
+    // constructor (a one-time read of state/<id>.json). Publish a
+    // one-shot badge snapshot here too so the count is correct the
+    // moment the webview first resolves.
     this.emitUnreadCount();
     // Normalize pinned-first even if sessions.json was hand-edited.
     this.applyPinnedFirst();
@@ -496,7 +493,7 @@ export class AgentManager implements vscode.Disposable {
    * Delete the per-agent state file (if any) at `state/<id>.json`.
    * Called before constructing a brand-new agent on an id that may
    * have an orphan file from a prior session, so the new agent's
-   * chokidar watcher doesn't seed the card with stale markers.
+   * constructor seed-read doesn't restore stale markers.
    */
   private wipeStateFile(id: string): void {
     try {
@@ -509,9 +506,9 @@ export class AgentManager implements vscode.Disposable {
 
   /** Directory holding state snapshots keyed by Claude sessionId — used
    * to preserve `tldr`/`progress`/`skill`/etc. across kill→reopen. State
-   * files in `stateDir` itself are keyed by glance agent id (Claude's
-   * MCP server writes there via the GLANCER_STATE_FILE env), but agent
-   * ids are reassigned on every reopen, so we promote the file to a
+   * files in `stateDir` itself are keyed by glance agent id (the
+   * extension writes them via applyAgentState), but agent ids are
+   * reassigned on every reopen, so we promote the file to a
    * sessionId-keyed slot whenever a card with a sessionId is killed. */
   private archiveDir(): string {
     return path.join(this.stateDir, 'by-session');
@@ -548,9 +545,9 @@ export class AgentManager implements vscode.Disposable {
   /**
    * Pre-seed a fresh agent's state file from the by-session archive if
    * we have an entry for `sessionId`. Called by `openOldSession` after
-   * `wipeStateFile` but before `makeAgent`, so the new agent's chokidar
-   * watcher sees a populated file on its first poll and emits a
-   * restored snapshot instead of the empty default. The archive entry
+   * `wipeStateFile` but before `makeAgent`, so the new agent's
+   * constructor seed-read sees a populated file and restores the card
+   * instead of the empty default. The archive entry
    * is consumed (moved) — if this card is later killed, it'll be re-
    * archived from the new id's path.
    */
@@ -655,7 +652,7 @@ export class AgentManager implements vscode.Disposable {
     // which inherits any stale state file at state/AG-03.json (an
     // orphan from a prior session that never made it into
     // sessions.json, or a failed earlier purge). The Agent's
-    // chokidar watcher reads that file on attach and seeds the new
+    // constructor seed-read would pick that file up and seed the new
     // card with the previous chat's title/tldr/progress. Wipe it
     // here so fresh agents start with empty cards regardless of
     // what was left behind.
@@ -798,14 +795,14 @@ export class AgentManager implements vscode.Disposable {
     // an orphan state file left behind by a prior agent. The picker
     // seeds the snapshot from the titles archive (by sessionId), but
     // the state file path is keyed by the new id, so we still need
-    // to wipe whatever sits at state/<id>.json or chokidar's first
-    // read will overwrite the seed with stale markers.
+    // to wipe whatever sits at state/<id>.json, or the new agent's
+    // constructor seed-read would pick up stale markers.
     this.wipeStateFile(id);
     // Restore the previous card's markers (tldr / progress / skill /
     // needsInput / error) by moving the by-session archive into the new
-    // agent's state slot. chokidar's first poll on the constructor's
-    // watcher will then emit a populated snapshot instead of the empty
-    // default. Title is handled separately just below via the titles
+    // agent's state slot. The Agent constructor's seed-read then
+    // restores a populated card instead of the empty default. Title is
+    // handled separately just below via the titles
     // archive — they're stored in different files because titles need
     // to survive even when the user opens an old session that was
     // killed before any state file was ever written.

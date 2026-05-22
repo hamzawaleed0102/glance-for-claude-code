@@ -37,7 +37,7 @@
   "scripts": {
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
-    "test": "node --test out/markers/extractMarkers.test.js out/markers/transcriptWatcher.test.js out/agents/sessionScanner.test.js out/agents/ids.test.js out/agents/pinSort.test.js out/agents/neighborSelection.test.js out/view/webview/reconcileOrder.test.js out/view/webview/flipGeometry.test.js out/agents/shellTitle.test.js out/view/webview/agentListKeymap.test.js out/agents/renameSync.test.js",
+    "test": "node --test out/markers/extractMarkers.test.js out/markers/transcriptWatcher.test.js out/agents/sessionScanner.test.js out/agents/ids.test.js out/agents/pinSort.test.js out/agents/neighborSelection.test.js out/view/webview/reconcileOrder.test.js out/view/webview/flipGeometry.test.js out/agents/shellTitle.test.js out/view/webview/agentListKeymap.test.js out/agents/renameSync.test.js out/server/mcpHandler.test.js",
     "fix-pty": "node scripts/fix-pty-perms.mjs",
     "postinstall": "node scripts/fix-pty-perms.mjs",
     "package-platforms": "node scripts/package-platforms.mjs",

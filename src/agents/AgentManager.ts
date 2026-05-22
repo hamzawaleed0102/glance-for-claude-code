@@ -26,9 +26,10 @@ type ManagerEvent =
   | { type: 'unread'; total: number };
 
 /**
- * Hook script writes one JSON file per event into the events dir. We watch that dir
- * (chokidar, 'add'), parse, route to the right Agent. The script self-heals: it
- * never throws and never blocks Claude's turn.
+ * The hook script and the MCP server both POST into the extension's
+ * in-process HTTP server (see GlanceServer); requests route to the right
+ * Agent by id. The hook script self-heals: it never throws and never
+ * blocks Claude's turn.
  */
 export class AgentManager implements vscode.Disposable {
   private readonly agents = new Map<string, ManagedAgent>();

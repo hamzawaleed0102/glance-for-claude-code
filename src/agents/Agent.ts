@@ -372,6 +372,9 @@ export class Agent implements vscode.Disposable, ManagedAgent {
     this.claude.onUserInput(() => {
       this._inputDirty = true;
     });
+    // ESC during a streaming turn is Claude Code's interrupt gesture. No
+    // Stop hook fires for an interrupt, so clear the working indicator here.
+    this.claude.onInterruptKey(() => this.notifyInterrupted());
   }
 
   /**
@@ -528,6 +531,18 @@ export class Agent implements vscode.Disposable, ManagedAgent {
     }
     if (Object.keys(patch).length > 0) this.changeEmitter.fire(patch);
     this.turnCompleteEmitter.fire();
+  }
+
+  /**
+   * The user pressed ESC to interrupt the turn. Claude Code fires no Stop
+   * hook on an interrupt, so without this the card would stay stuck on the
+   * working indicator. Flip streaming off — no toast/tone, since an
+   * interrupt is not a clean finish.
+   */
+  notifyInterrupted(): void {
+    if (!this._streaming) return;
+    this._streaming = false;
+    this.changeEmitter.fire({ streaming: false });
   }
 
   /**

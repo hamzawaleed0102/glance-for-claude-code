@@ -50,3 +50,8 @@ test('notifications return null (no reply)', () => {
   const res = handleMcpRequest({ jsonrpc: '2.0', method: 'notifications/initialized' }, noopCtx);
   assert.equal(res, null);
 });
+
+test('an unknown method returns a method-not-found error', () => {
+  const res = handleMcpRequest({ jsonrpc: '2.0', id: 9, method: 'bogus/method' }, noopCtx);
+  assert.equal(res?.error?.code, -32601);
+});

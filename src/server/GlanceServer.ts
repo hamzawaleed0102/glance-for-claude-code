@@ -5,7 +5,7 @@
 
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
-import { handleMcpRequest, type AgentState } from './mcpHandler';
+import { handleMcpRequest, type AgentState, type JsonRpcRequest } from './mcpHandler';
 
 export interface GlanceServerCallbacks {
   /** Glance system instructions returned in the MCP `initialize` response. */
@@ -91,7 +91,20 @@ export class GlanceServer {
   }
 
   private handleMcp(agentId: string, body: string, res: http.ServerResponse): void {
-    const response = handleMcpRequest(JSON.parse(body), {
+    let rpc: JsonRpcRequest;
+    try {
+      rpc = JSON.parse(body) as JsonRpcRequest;
+    } catch {
+      // Malformed JSON — reply with a JSON-RPC parse error, not a bare 500.
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32700, message: 'Parse error' },
+      }));
+      return;
+    }
+    const response = handleMcpRequest(rpc, {
       instructions: this.cb.instructions,
       applyState: (state) => this.cb.applyState(agentId, state),
     });
@@ -104,7 +117,13 @@ export class GlanceServer {
   }
 
   private handleHookRoute(agentId: string, body: string, res: http.ServerResponse): void {
-    const parsed = JSON.parse(body) as { payload?: unknown };
+    let parsed: { payload?: unknown };
+    try {
+      parsed = JSON.parse(body) as { payload?: unknown };
+    } catch {
+      res.writeHead(400).end();
+      return;
+    }
     this.cb.handleHook(agentId, parsed.payload);
     res.writeHead(204).end();
   }

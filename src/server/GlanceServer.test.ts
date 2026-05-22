@@ -100,3 +100,20 @@ test('unknown path returns 404', async () => {
     server.dispose();
   }
 });
+
+test('a malformed /mcp body returns a JSON-RPC parse error, not a 500', async () => {
+  const server = mkServer();
+  await server.start();
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.port}/mcp/AG-01`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${server.token}`, 'Content-Type': 'application/json' },
+      body: '{not valid json',
+    });
+    assert.equal(res.status, 200);
+    const json = (await res.json()) as { error?: { code?: number } };
+    assert.equal(json.error?.code, -32700);
+  } finally {
+    server.dispose();
+  }
+});

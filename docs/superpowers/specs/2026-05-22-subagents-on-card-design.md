@@ -170,8 +170,9 @@ parent turn ends
 
 | Case | Behaviour |
 |---|---|
-| `PreToolUse` lost | That subagent gets no row; a later `SubagentStop` for its id is a no-op. |
-| `SubagentStop` lost | Row stays "running" — but the turn-end `Stop` clears the whole list. Self-correcting. |
+| `PreToolUse` lost | That subagent gets no row; a later `PostToolUse` for its id is a no-op. |
+| `PostToolUse` lost | Row stays "running" — but the turn-end `Stop` clears the whole list. Self-correcting. |
+| Esc interrupt | `notifyInterrupted` clears the whole list (the turn — and its subagents — stopped). |
 | Nested subagents (a subagent dispatches one) | Its `PreToolUse{Agent}` routes to the same card; shown flattened in the one list. Acceptable. |
 | Many subagents | Cap at 5 rendered rows + a `+N more` row. |
 | Duplicate `PreToolUse` for one id | `subagentStarted` dedupes on `id`. |
@@ -181,9 +182,10 @@ parent turn ends
 
 **Changed**
 - `src/agents/AgentManager.ts` — `hook-settings.json` gains `PreToolUse` +
-  `SubagentStop`; `handleHookEvent` gains two branches.
+  `PostToolUse` (both `matcher: "Agent"`); `handleHookEvent` gains two branches.
 - `src/agents/Agent.ts` — `_subagents` state, `subagentStarted` /
-  `subagentFinished`, clearing in the three turn-boundary methods.
+  `subagentFinished`, clearing in the four turn-boundary methods
+  (`notifyTurnComplete`, `clearTransient`, `resetCardState`, `notifyInterrupted`).
 - `src/shared/messages.ts` — `subagents` field on `AgentSnapshot`.
 - `src/view/webview/AgentCard.tsx` — subagent rows section.
 - `src/view/webview/styles.css` — subagent row styling.
@@ -207,9 +209,11 @@ parent turn ends
 
 The `Agent` tool's `tool_input` schema is not officially documented.
 **Implementation step 1 is a verification spike:** in a real session, dispatch
-two or three parallel subagents and capture the actual `PreToolUse{Agent}` and
-`SubagentStop` hook payloads. Confirm:
-1. `tool_use_id` is present in both and matches across the pair.
+two or three parallel subagents and capture the actual `PreToolUse{Agent}`,
+`PostToolUse{Agent}`, and `SubagentStop` hook payloads. Confirm:
+1. `tool_use_id` is present in `PreToolUse` and `PostToolUse` and matches
+   across the pair. (The spike found `SubagentStop` carries none — hence it
+   is not used.)
 2. What field(s) `tool_input` exposes for a row label.
 
 If `tool_input` carries no usable description, `subagentLabel` falls back to

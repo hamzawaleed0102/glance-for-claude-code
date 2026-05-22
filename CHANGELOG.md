@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.0.31 — 2026-05-23
+
+- **Fix: deleting a card no longer makes the rest of the list jerk.** Removing a card triggered the FLIP reorder animation to misread cards mid-slide — the neighbours snapped, and the next few arrow-key moves jittered with them. The reorder measurement now backs out any in-flight transform, so a delete slides cleanly and navigation stays smooth right after it.
+- **New: a card shows whether you're *in* its terminal or just have it selected.** The active card now has two looks — a blue outline while it's selected in the panel (press `Enter` to drop in), and a brighter solid treatment once you're typing in its terminal — so it's obvious at a glance which mode you're in.
+- **New: the agent panel shows a focus border.** A slight accent border wraps the whole panel while it holds keyboard focus.
+- **Change: the model picker moved into the panel header.** The footer "+ New Session" button is gone — spawn a new session with the `+` in the header, and pick a specific model from the chevron dropdown beside it.
+- **Polish: a session is renamed only once per conversation.** Glance echoes `/rename` into a session's terminal for the first title it gets, then leaves it alone; later title changes no longer re-rename the session. `/clear` re-arms it for the next conversation.
+- **Polish: the turn-complete sound is now a real notification tone** — a bundled audio file — instead of the synthesized beep.
+
 ## 0.0.30 — 2026-05-22
 
 - **New: cards show their background subagents.** When a session dispatches subagents via the `Agent` tool, the card now lists one row per subagent — its task label plus a running dot or a done check — under the progress bar. Rows appear as subagents start, flip to done as each finishes, and clear when the parent turn ends. Detection rides on the `PreToolUse` and `PostToolUse` hooks scoped to the `Agent` tool, correlated by `tool_use_id`.

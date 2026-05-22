@@ -2,7 +2,7 @@
   "name": "glance-claude-code",
   "displayName": "Glance for Claude Code",
   "description": "Manage multiple Claude Code agents at a glance in VS Code — live status cards for each session, no eye strain switching between terminals.",
-  "version": "0.0.30",
+  "version": "0.0.31",
   "publisher": "hamzawaleed",
   "license": "MIT",
   "icon": "resources/icon.png",

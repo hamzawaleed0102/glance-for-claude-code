@@ -1,8 +1,7 @@
 /**
  * Returned by the Glance MCP server in its `initialize` response's
  * `instructions` field — surfaced to every Claude session attached to
- * Glance. The state file path is read server-side from the inherited
- * `GLANCER_STATE_FILE` env var, so this prompt is identical across agents.
+ * Glance. Identical for every agent.
  */
 export function summarySystemPrompt(_stateFilePath: string): string {
   return (

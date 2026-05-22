@@ -3,6 +3,16 @@ export type TitleSource = 'default' | 'ai' | 'rename' | 'manual';
 /** Which kind of card this is: a Claude Code session, or a plain shell terminal. */
 export type AgentKind = 'claude' | 'shell';
 
+/**
+ * One subagent the session has dispatched this turn. `id` is the `Agent`
+ * tool call's `tool_use_id` (correlation key + React row key).
+ */
+export interface Subagent {
+  id: string;
+  label: string;
+  done: boolean;
+}
+
 export interface AgentSnapshot {
   id: string;
   /** 'claude' = a Claude Code session; 'shell' = a plain shell terminal. */
@@ -22,6 +32,12 @@ export interface AgentSnapshot {
    */
   skill: string | null;
   streaming: boolean;
+  /**
+   * Subagents the session has running this turn — one row per entry on the
+   * card. Hook-driven and turn-scoped (cleared when the parent turn ends);
+   * not persisted to `state/<id>.json`. Optional — shell cards omit it.
+   */
+  subagents?: Subagent[];
   /**
    * True from the moment the agent is spawned until Claude's TUI is on
    * screen (alt-screen entered, or 2s fallback). While true the renderer

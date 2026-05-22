@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { GlanceServer } from '../server/GlanceServer';
+import { subagentLabel } from './subagentLabel';
 import type { AgentState } from '../server/mcpHandler';
 import { Agent } from './Agent';
 import { ShellAgent } from './ShellAgent';
@@ -134,6 +135,14 @@ export class AgentManager implements vscode.Disposable {
         hooks: [{ type: 'command', command: shellQuoted }],
       },
     ];
+    // PreToolUse / PostToolUse fire for every tool call; scope them to the
+    // `Agent` tool so the hooks don't run on every Read/Edit/Bash.
+    const agentMatcherGroup = [
+      {
+        matcher: 'Agent',
+        hooks: [{ type: 'command', command: shellQuoted }],
+      },
+    ];
     fs.writeFileSync(
       this.hookSettingsPath,
       JSON.stringify(
@@ -143,6 +152,8 @@ export class AgentManager implements vscode.Disposable {
             UserPromptSubmit: matcherGroup,
             Notification: matcherGroup,
             SessionStart: matcherGroup,
+            PreToolUse: agentMatcherGroup,
+            PostToolUse: agentMatcherGroup,
           },
         },
         null,
@@ -1085,6 +1096,10 @@ export class AgentManager implements vscode.Disposable {
       // Claude Code: 'startup' (fresh), 'resume' (--resume <id>),
       // 'clear' (/clear), 'compact' (/compact).
       source?: 'startup' | 'resume' | 'clear' | 'compact';
+      // PreToolUse / PostToolUse fields for subagent tracking.
+      tool_name?: string;
+      tool_input?: unknown;
+      tool_use_id?: string;
     };
     const hookEvent = evt.hook_event_name;
     const sessionId = evt.session_id;
@@ -1148,6 +1163,18 @@ export class AgentManager implements vscode.Disposable {
       if (/claude is waiting for your input/i.test(raw)) return;
       const message = raw || 'Waiting for input';
       agent.setNeedsAttention(message);
+    } else if (hookEvent === 'PreToolUse') {
+      // Scoped to the `Agent` tool by the hook matcher; re-check tool_name
+      // defensively. PreToolUse{Agent} = a subagent was dispatched.
+      if (evt.tool_name === 'Agent' && typeof evt.tool_use_id === 'string') {
+        agent.subagentStarted(evt.tool_use_id, subagentLabel(evt.tool_input));
+      }
+    } else if (hookEvent === 'PostToolUse') {
+      // PostToolUse{Agent} = a subagent finished — its tool_use_id matches
+      // the dispatching PreToolUse{Agent}.
+      if (evt.tool_name === 'Agent' && typeof evt.tool_use_id === 'string') {
+        agent.subagentFinished(evt.tool_use_id);
+      }
     }
   }
 

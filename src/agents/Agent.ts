@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import { createClaudePty, type ClaudePty } from './pseudoterminal';
 import type { AgentState } from '../server/mcpHandler';
-import type { AgentSnapshot, AgentKind, ClaudeModel, TitleSource } from '../shared/messages';
+import type { AgentSnapshot, AgentKind, ClaudeModel, Subagent, TitleSource } from '../shared/messages';
 import type { ManagedAgent } from './ManagedAgent';
 import { decideRename, decideFlush } from './renameSync';
 
@@ -129,6 +129,8 @@ export class Agent implements vscode.Disposable, ManagedAgent {
   private _progress: { value: number; label: string } | null = null;
   private _skill: string | null = null;
   private _streaming = false;
+  /** Subagents dispatched this turn. Turn-scoped; cleared at turn boundaries. */
+  private _subagents: Subagent[] = [];
   private _starting = true;
   /**
    * Best-effort "the user has typed into the terminal input box" flag. Set
@@ -139,7 +141,11 @@ export class Agent implements vscode.Disposable, ManagedAgent {
   private _inputDirty = false;
   /** Latest AI title waiting to be echoed as `/rename` once it is safe. */
   private _pendingRename: string | null = null;
-  /** Title text of the most recent `/rename` echo Glance sent — loop guard. */
+  /**
+   * Title of the `/rename` echo Glance has sent this conversation, or null if
+   * none yet. Non-null means the session was already renamed — the once-per-
+   * conversation guard. Reset to null by `resetCardState` on `/clear`.
+   */
   private _lastSentRename: string | null = null;
 
   private claude: ClaudePty | null = null;
@@ -488,6 +494,7 @@ export class Agent implements vscode.Disposable, ManagedAgent {
     if (this._progress !== null) { this._progress = null; patch.progress = null; }
     if (this._skill !== null) { this._skill = null; patch.skill = null; }
     if (this._streaming) { this._streaming = false; patch.streaming = false; }
+    this.clearSubagents(patch);
     if (Object.keys(patch).length > 0) this.changeEmitter.fire(patch);
     if (patch.name !== undefined) this.metaChangeEmitter.fire();
     // Overwrite the persisted state file so a dormant restore re-seeds
@@ -529,6 +536,7 @@ export class Agent implements vscode.Disposable, ManagedAgent {
       this._attentionSource = null;
       patch.attentionReason = null;
     }
+    this.clearSubagents(patch);
     if (Object.keys(patch).length > 0) this.changeEmitter.fire(patch);
     this.turnCompleteEmitter.fire();
   }
@@ -543,6 +551,32 @@ export class Agent implements vscode.Disposable, ManagedAgent {
     if (!this._streaming) return;
     this._streaming = false;
     this.changeEmitter.fire({ streaming: false });
+  }
+
+  /** A subagent (Agent tool call) started — add a running row. */
+  subagentStarted(id: string, label: string): void {
+    if (this._subagents.some((s) => s.id === id)) return;
+    this._subagents.push({ id, label, done: false });
+    this.changeEmitter.fire({ subagents: [...this._subagents] });
+  }
+
+  /** A subagent finished — flip its row to done. Unknown id is a no-op. */
+  subagentFinished(id: string): void {
+    const sub = this._subagents.find((s) => s.id === id);
+    if (!sub || sub.done) return;
+    sub.done = true;
+    this.changeEmitter.fire({ subagents: [...this._subagents] });
+  }
+
+  /**
+   * Empty the subagent list if non-empty, recording the change in `patch`
+   * so it clears with the rest of the per-turn card state in one emit.
+   */
+  private clearSubagents(patch: Partial<AgentSnapshot>): void {
+    if (this._subagents.length > 0) {
+      this._subagents = [];
+      patch.subagents = [];
+    }
   }
 
   /**
@@ -628,6 +662,7 @@ export class Agent implements vscode.Disposable, ManagedAgent {
       this._skill = null;
       patch.skill = null;
     }
+    this.clearSubagents(patch);
     if (!this._streaming) {
       this._streaming = true;
       patch.streaming = true;
@@ -711,9 +746,11 @@ export class Agent implements vscode.Disposable, ManagedAgent {
 
   /**
    * Echo `/rename <title>` into the terminal when Claude assigns a new card
-   * title. Sent immediately when the input box is clean — mid-turn or not.
-   * If the user has typed into the box, the title is queued and
-   * `flushPendingRename` sends it when the user next submits.
+   * title. Fires at most once per conversation — the first title sticks for
+   * the rest of the session; later title changes never re-echo. Sent
+   * immediately when the input box is clean — mid-turn or not. If the user
+   * has typed into the box, the title is queued and `flushPendingRename`
+   * sends it when the user next submits.
    * See docs/superpowers/specs/2026-05-21-instant-rename-echo-design.md.
    *
    * `/rename` renames the session in place — it does not start a new Claude
@@ -721,7 +758,6 @@ export class Agent implements vscode.Disposable, ManagedAgent {
    */
   private maybeSendRename(title: string): void {
     const decision = decideRename({
-      title,
       inputDirty: this._inputDirty,
       lastSent: this._lastSentRename,
     });
@@ -730,7 +766,7 @@ export class Agent implements vscode.Disposable, ManagedAgent {
     } else if (decision === 'queue') {
       this._pendingRename = title;
     }
-    // 'skip' — already echoed this exact title; do nothing.
+    // 'skip' — the session was already renamed once this conversation; do nothing.
   }
 
   /** Flush a queued `/rename` echo when the input box goes clean (on submit). */
@@ -780,6 +816,7 @@ export class Agent implements vscode.Disposable, ManagedAgent {
       progress: this._progress,
       skill: this._skill,
       streaming: this._streaming,
+      subagents: [...this._subagents],
       starting: this._starting,
       pinned: this._pinned,
     };

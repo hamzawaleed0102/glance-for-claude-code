@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.30 — 2026-05-22
+
+- **New: cards show their background subagents.** When a session dispatches subagents via the `Agent` tool, the card now lists one row per subagent — its task label plus a running dot or a done check — under the progress bar. Rows appear as subagents start, flip to done as each finishes, and clear when the parent turn ends. Detection rides on the `PreToolUse` and `PostToolUse` hooks scoped to the `Agent` tool, correlated by `tool_use_id`.
+
 ## 0.0.29 — 2026-05-22
 
 - **Internal: agent state and hooks now flow through an in-process HTTP server.** MCP `update_state` calls and Claude Code hook events post directly into the extension over a localhost-only HTTP server, replacing the file-drop + `chokidar` watcher pipeline. This drops the `mcp-server.mjs` child process, both file watchers, the 250 ms polling lag, and the `chokidar` dependency — and fixes a class of bug where a lost hook event left a card stuck showing a finished turn while Claude was still working.

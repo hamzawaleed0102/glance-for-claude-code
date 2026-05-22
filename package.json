@@ -2,7 +2,7 @@
   "name": "glance-claude-code",
   "displayName": "Glance for Claude Code",
   "description": "Manage multiple Claude Code agents at a glance in VS Code — live status cards for each session, no eye strain switching between terminals.",
-  "version": "0.0.29",
+  "version": "0.0.30",
   "publisher": "hamzawaleed",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -37,7 +37,7 @@
   "scripts": {
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
-    "test": "node --test out/agents/sessionScanner.test.js out/agents/ids.test.js out/agents/pinSort.test.js out/agents/neighborSelection.test.js out/view/webview/reconcileOrder.test.js out/view/webview/flipGeometry.test.js out/agents/shellTitle.test.js out/view/webview/agentListKeymap.test.js out/agents/renameSync.test.js out/server/mcpHandler.test.js out/server/GlanceServer.test.js src/markers/hook.test.mjs",
+    "test": "node --test out/agents/sessionScanner.test.js out/agents/ids.test.js out/agents/pinSort.test.js out/agents/neighborSelection.test.js out/view/webview/reconcileOrder.test.js out/view/webview/flipGeometry.test.js out/agents/shellTitle.test.js out/view/webview/agentListKeymap.test.js out/agents/renameSync.test.js out/server/mcpHandler.test.js out/server/GlanceServer.test.js out/agents/subagentLabel.test.js src/markers/hook.test.mjs",
     "fix-pty": "node scripts/fix-pty-perms.mjs",
     "postinstall": "node scripts/fix-pty-perms.mjs",
     "package-platforms": "node scripts/package-platforms.mjs",

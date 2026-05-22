@@ -229,6 +229,39 @@ export function AgentCard({
         </div>
       </div>
 
+      {/* Subagent rows — one per Agent-tool subagent running this turn.
+       *  Turn-scoped; the list clears when the parent turn ends. Capped at
+       *  5 visible rows with a "+N more" overflow line. */}
+      <div
+        className="reveal"
+        data-open={agent.subagents && agent.subagents.length > 0 ? 'true' : 'false'}
+      >
+        <div className="reveal-inner">
+          {agent.subagents && agent.subagents.length > 0 && (
+            <div className="agent-subagents">
+              {agent.subagents.slice(0, 5).map((s) => (
+                <div key={s.id} className="agent-subagent-row">
+                  <span className="agent-subagent-label" title={s.label}>
+                    {`↳ ${s.label}`}
+                  </span>
+                  <span
+                    className={`agent-subagent-glyph ${s.done ? 'done' : 'running'}`}
+                    aria-label={s.done ? 'done' : 'running'}
+                  >
+                    {s.done ? '✓' : '●'}
+                  </span>
+                </div>
+              ))}
+              {agent.subagents.length > 5 && (
+                <div className="agent-subagent-row agent-subagent-more">
+                  {`+${agent.subagents.length - 5} more`}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Skill pill — bottom-right of the card, under the progress bar.
        *  Renders independently of progress visibility (the active-skill
        *  marker reflects what kind of work is happening, not step-by-

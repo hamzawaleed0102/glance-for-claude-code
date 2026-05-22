@@ -6,7 +6,7 @@ let manager: AgentManager | null = null;
 const WALKTHROUGH_ID = 'hamzawaleed.glance-claude-code#glancer.welcome';
 const WALKTHROUGH_SEEN_KEY = 'glancer.walkthrough.seen';
 
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
   try {
     // Sanity-check node-pty can load in this Electron runtime.
     require('node-pty');
@@ -17,6 +17,7 @@ export function activate(context: vscode.ExtensionContext): void {
     );
   }
   manager = new AgentManager({ context });
+  await manager.start();
   const provider = new AgentPanelProvider(context, manager);
 
   context.subscriptions.push(

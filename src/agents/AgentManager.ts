@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import chokidar, { type FSWatcher } from 'chokidar';
+import { GlanceServer } from '../server/GlanceServer';
+import type { AgentState } from '../server/mcpHandler';
 import { Agent } from './Agent';
 import { ShellAgent } from './ShellAgent';
 import type { ManagedAgent } from './ManagedAgent';
@@ -43,13 +44,10 @@ export class AgentManager implements vscode.Disposable {
   private shuttingDown = false;
 
   private readonly storageDir: string;
-  private readonly eventsDir: string;
   private readonly stateDir: string;
   private readonly hookScriptPath: string;
-  private readonly mcpServerPath: string;
   private readonly hookSettingsPath: string;
-  private readonly mcpConfigPath: string;
-  private readonly instructionsPath: string;
+  private readonly glanceServer: GlanceServer;
   /**
    * Path to the per-workspace sessions.json (the list of session IDs the
    * user has surfaced as cards in this window). Null when no workspace
@@ -67,7 +65,6 @@ export class AgentManager implements vscode.Disposable {
    * no workspace folder is open.
    */
   private readonly titlesFile: string | null;
-  private readonly eventsWatcher: FSWatcher;
   /**
    * VS Code's onDidChangeActiveTerminal subscription — mirrors the active
    * terminal pane's selection back into the Glance sidebar so clicking a
@@ -97,15 +94,19 @@ export class AgentManager implements vscode.Disposable {
     const dataDir = wsStorageDir ?? this.storageDir;
     if (wsStorageDir) fs.mkdirSync(wsStorageDir, { recursive: true });
 
-    this.eventsDir = path.join(dataDir, 'events');
-    fs.mkdirSync(this.eventsDir, { recursive: true });
-
-    // Per-agent JSON status files live here. Claude is instructed (via the
-    // system prompt) to overwrite its file with `{title, tldr, progress,
-    // needsInput, error}` after every response; each agent watches its own
-    // file and routes the fields into the snapshot.
+    // Per-agent JSON status files live here. The HTTP server writes a
+    // merged snapshot here on every update_state call; dormant agents
+    // re-seed their card from it on restore.
     this.stateDir = path.join(dataDir, 'state');
     fs.mkdirSync(this.stateDir, { recursive: true });
+
+    // In-process HTTP server: Claude's update_state MCP calls and Claude
+    // Code hook events POST directly here — no files, no chokidar.
+    this.glanceServer = new GlanceServer({
+      instructions: summarySystemPrompt(''),
+      applyState: (agentId, state) => this.applyAgentState(agentId, state),
+      handleHook: (agentId, payload) => this.handleHookEvent(agentId, payload),
+    });
 
     // Copy the hook and MCP server scripts to storageDir so they have stable
     // absolute paths even when the extension is updated.
@@ -116,20 +117,6 @@ export class AgentManager implements vscode.Disposable {
       fs.chmodSync(this.hookScriptPath, 0o755);
     } catch (err) {
       console.warn('[glancer] failed to install hook script:', err);
-    }
-
-    this.mcpServerPath = path.join(this.storageDir, 'mcp-server.mjs');
-    const bundledMcpPath = path.join(
-      init.context.extensionPath,
-      'out',
-      'markers',
-      'mcp-server.mjs',
-    );
-    try {
-      fs.copyFileSync(bundledMcpPath, this.mcpServerPath);
-      fs.chmodSync(this.mcpServerPath, 0o755);
-    } catch (err) {
-      console.warn('[glancer] failed to install MCP server script:', err);
     }
 
     this.hookSettingsPath = path.join(this.storageDir, 'hook-settings.json');
@@ -162,53 +149,6 @@ export class AgentManager implements vscode.Disposable {
         2,
       ),
     );
-
-    // Glancer system instructions. The MCP server reads this file on
-    // startup and returns its contents in the `initialize` response's
-    // `instructions` field — the official MCP mechanism for surfacing
-    // prompt-like guidance to the model. Written first so the path baked
-    // into mcp-config.json (and read by Claude Code at session start)
-    // already exists.
-    this.instructionsPath = path.join(this.storageDir, 'glancer-instructions.txt');
-    fs.writeFileSync(this.instructionsPath, summarySystemPrompt(''));
-
-    this.mcpConfigPath = path.join(this.storageDir, 'mcp-config.json');
-    fs.writeFileSync(
-      this.mcpConfigPath,
-      JSON.stringify(
-        {
-          mcpServers: {
-            glancer: {
-              command: 'node',
-              args: [this.mcpServerPath],
-              // The MCP server reads this file on startup and returns its
-              // contents in the `initialize` response's `instructions`
-              // field — the official MCP mechanism for surfacing
-              // prompt-like guidance to the model. This is why we no
-              // longer need `--append-system-prompt` on the claude CLI.
-              env: {
-                GLANCER_INSTRUCTIONS_FILE: this.instructionsPath,
-              },
-            },
-          },
-        },
-        null,
-        2,
-      ),
-    );
-
-    this.eventsWatcher = chokidar.watch(this.eventsDir, {
-      persistent: true,
-      ignoreInitial: true,
-      usePolling: true,
-      interval: 200,
-    });
-    this.eventsWatcher.on('add', (filePath: string) => {
-      this.handleHookEvent(filePath);
-    });
-    this.eventsWatcher.on('error', (err) => {
-      console.error('[glancer] events watcher error', err);
-    });
 
     // Sessions + titles persistence — workspace-scoped (same wsStorageDir
     // computed above). Source of truth for "what sessions exist on this
@@ -646,9 +586,9 @@ export class AgentManager implements vscode.Disposable {
       cwd: opts.cwd,
       model: opts.model,
       hookSettingsPath: this.hookSettingsPath,
-      mcpConfigPath: this.mcpConfigPath,
-      eventsDir: this.eventsDir,
-      hookScriptPath: this.hookScriptPath,
+      mcpConfigPath: path.join(this.storageDir, `mcp-config-${opts.id}.json`),
+      server: this.glanceServer,
+      logDir: this.storageDir,
       stateFilePath: path.join(this.stateDir, `${opts.id}.json`),
       dormant: opts.dormant,
       sessionId: opts.sessionId,
@@ -1092,39 +1032,64 @@ export class AgentManager implements vscode.Disposable {
     }
   }
 
-  private handleHookEvent(filePath: string): void {
-    let payload: unknown;
+  /**
+   * Start the in-process HTTP server. Must be awaited during extension
+   * activation, before any agent can spawn — Agent.spawn() reads the
+   * server's port at spawn time.
+   */
+  async start(): Promise<void> {
     try {
-      const raw = fs.readFileSync(filePath, 'utf8');
-      payload = JSON.parse(raw);
+      await this.glanceServer.start();
     } catch (err) {
-      console.warn('[glancer] failed to read hook event', filePath, err);
-      return;
-    } finally {
-      try {
-        fs.unlinkSync(filePath);
-      } catch {
-        // ignore
-      }
+      console.error('[glancer] HTTP server failed to start', err);
+      void vscode.window.showErrorMessage(
+        'Glance: status server failed to start — agent cards will not update.',
+      );
     }
+  }
+
+  /**
+   * Apply an MCP update_state payload: update the live card immediately,
+   * and persist a merged snapshot to state/<id>.json so a dormant restore
+   * re-seeds correctly. Called by GlanceServer on every update_state call.
+   */
+  private applyAgentState(agentId: string, state: AgentState): void {
+    const agent = this.agents.get(agentId);
+    if (!(agent instanceof Agent)) return;
+    agent.applyState(state);
+    const file = path.join(this.stateDir, `${agentId}.json`);
+    let prev: Record<string, unknown> = {};
+    try {
+      const raw = fs.readFileSync(file, 'utf8').trim();
+      if (raw.length > 0) prev = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      // First write for this agent — expected.
+    }
+    const merged: Record<string, unknown> = { ...prev };
+    for (const key of ['title', 'tldr', 'progress', 'needsInput', 'error', 'skill']) {
+      if (key in state) merged[key] = (state as Record<string, unknown>)[key];
+    }
+    try {
+      fs.writeFileSync(file, JSON.stringify(merged, null, 2));
+    } catch (err) {
+      console.warn('[glancer] state persist failed', err);
+    }
+  }
+
+  private handleHookEvent(agentId: string, payload: unknown): void {
     if (typeof payload !== 'object' || payload === null) return;
-    const wrapper = payload as {
-      agentId?: string;
-      payload?: {
-        hook_event_name?: string;
-        session_id?: string;
-        prompt?: string;
-        message?: string;
-        // SessionStart hook reports how the session began. Values per
-        // Claude Code: 'startup' (fresh), 'resume' (--resume <id>),
-        // 'clear' (/clear), 'compact' (/compact).
-        source?: 'startup' | 'resume' | 'clear' | 'compact';
-      };
+    const evt = payload as {
+      hook_event_name?: string;
+      session_id?: string;
+      prompt?: string;
+      message?: string;
+      // SessionStart hook reports how the session began. Values per
+      // Claude Code: 'startup' (fresh), 'resume' (--resume <id>),
+      // 'clear' (/clear), 'compact' (/compact).
+      source?: 'startup' | 'resume' | 'clear' | 'compact';
     };
-    const agentId = wrapper.agentId;
-    const hookEvent = wrapper.payload?.hook_event_name;
-    const sessionId = wrapper.payload?.session_id;
-    if (!agentId) return;
+    const hookEvent = evt.hook_event_name;
+    const sessionId = evt.session_id;
     const agent = this.agents.get(agentId);
     if (!agent) {
       console.warn('[glancer] hook event for unknown agent', agentId);
@@ -1147,7 +1112,7 @@ export class AgentManager implements vscode.Disposable {
       // and the badge would stay stuck on a now-meaningless "needs
       // input" marker. Wipe it. 'startup' and 'resume' deliberately
       // preserve state.
-      const source = wrapper.payload?.source;
+      const source = evt.source;
       if (source === 'clear' || source === 'compact') {
         agent.resetCardState();
       }
@@ -1180,8 +1145,8 @@ export class AgentManager implements vscode.Disposable {
       // fallback for the rare race where idle fires before Stop is
       // processed.
       if (!agent.streaming) return;
-      const payload = wrapper.payload as { message?: string } | undefined;
-      const raw = typeof payload?.message === 'string' ? payload.message.trim() : '';
+      const note = evt as { message?: string };
+      const raw = typeof note.message === 'string' ? note.message.trim() : '';
       if (/claude is waiting for your input/i.test(raw)) return;
       const message = raw || 'Waiting for input';
       agent.setNeedsAttention(message);
@@ -1202,7 +1167,7 @@ export class AgentManager implements vscode.Disposable {
   dispose(): void {
     for (const a of this.agents.values()) a.dispose();
     this.agents.clear();
-    this.eventsWatcher.close();
+    this.glanceServer.dispose();
     this.activeTerminalSub.dispose();
     this.changeEmitter.dispose();
   }

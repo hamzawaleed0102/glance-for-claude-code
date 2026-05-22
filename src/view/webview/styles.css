@@ -622,3 +622,43 @@ body {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* Subagent rows — shown under the progress bar while the session has
+ * Agent-tool subagents running this turn. */
+.agent-subagents {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 4px;
+}
+.agent-subagent-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.agent-subagent-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-subagent-glyph {
+  flex-shrink: 0;
+  font-size: 9px;
+}
+.agent-subagent-glyph.running {
+  color: var(--accent);
+  animation: stripe-pulse 1.5s ease-in-out infinite;
+}
+.agent-subagent-glyph.done {
+  color: var(--done);
+}
+.agent-subagent-more {
+  color: var(--muted);
+  opacity: 0.7;
+  font-style: italic;
+}

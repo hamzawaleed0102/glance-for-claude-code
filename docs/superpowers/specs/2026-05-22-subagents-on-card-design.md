@@ -139,10 +139,11 @@ rows render; a 6th `+N more` row covers any overflow.
 
 ```
 PreToolUse{Agent}   → row added, running
-SubagentStop        → that row flips to done (✓)
+PostToolUse{Agent}  → that row flips to done (✓)
 Stop (parent turn)  → entire subagent list cleared, section collapses
 UserPromptSubmit    → list cleared (defensive — a new turn starts fresh)
 SessionStart/clear  → list cleared
+Esc interrupt       → list cleared (the turn — and its subagents — stopped)
 ```
 
 Rows are a live, while-working detail. After the turn ends the card returns to
@@ -158,7 +159,7 @@ Claude calls the Agent tool
     → snapshot patch → webview → AgentCard renders a running row
 
 subagent finishes
-  → SubagentStop hook → … → Agent.subagentFinished(tool_use_id)
+  → PostToolUse{Agent} hook → … → Agent.subagentFinished(tool_use_id)
     → row flips to done
 
 parent turn ends

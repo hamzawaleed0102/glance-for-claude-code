@@ -116,6 +116,20 @@ body {
   min-height: 0;
 }
 
+/* Status-colored left accent stripe — the card's working/status indicator.
+ * Always present (position: absolute, so it never affects layout): showing,
+ * hiding, or recoloring it never shifts the card's content — "sticky". */
+.agent-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: transparent;
+  transition: width 160ms ease, background 160ms ease;
+}
+
 .agent-card:hover {
   background: linear-gradient(
     180deg,
@@ -140,6 +154,7 @@ body {
     0 0 0 4px rgba(255, 255, 255, 0.14),
     0 6px 18px rgba(0, 0, 0, 0.40);
 }
+.agent-card.active::before { width: 5px; }
 .agent-card.active .agent-name { color: #ffffff; font-weight: 700; }
 .agent-card.starting { opacity: 0.85; }
 
@@ -156,6 +171,16 @@ body {
     0 -2px 0 var(--accent),
     0 0 0 1px rgba(99, 162, 255, 0.35);
 }
+.agent-card.drag-over::before { width: 6px; background: var(--accent); }
+
+/* Per-status accent stripe colors — the card's status indicator now that
+ * the right-side dot is gone. */
+.agent-card.status-idle::before     { background: rgba(255, 255, 255, 0.10); }
+.agent-card.status-starting::before { background: var(--accent); animation: stripe-pulse 1.5s ease-in-out infinite; }
+.agent-card.status-streaming::before{ background: var(--accent); animation: stripe-pulse 1.5s ease-in-out infinite; }
+.agent-card.status-attention::before{ background: var(--warn); }
+.agent-card.status-error::before    { background: var(--danger); }
+.agent-card.status-done::before     { background: var(--done); }
 
 /* Shell-terminal cards — a plain shell, not a Claude session. A dashed
  * border, a faint blue tint, and a monospace `>_` title set them apart at
@@ -189,54 +214,9 @@ body {
   flex-shrink: 0;
 }
 
-/* Status badge — small chip on the right edge, vertically centered on
- * the card so it doesn't crowd the close button at top-right. Color-
- * coded to status. */
-.agent-status {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 14px;
-  height: 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  font-weight: 700;
-  border-radius: 50%;
-  letter-spacing: -0.02em;
-  pointer-events: auto;
-}
-.agent-status.dot {
-  width: 8px;
-  height: 8px;
-}
-.agent-status.starting,
-.agent-status.streaming {
-  background: var(--accent);
-  box-shadow: 0 0 0 3px rgba(99, 162, 255, 0.18);
-  animation: dot-pulse 1.4s ease-in-out infinite;
-}
-.agent-status.attention {
-  background: var(--warn);
-  box-shadow: 0 0 0 3px rgba(255, 200, 50, 0.18);
-}
-.agent-status.error {
-  background: var(--danger);
-  box-shadow: 0 0 0 3px rgba(255, 80, 80, 0.18);
-}
-.agent-status.done {
-  color: #0d1117;
-  background: var(--done);
-  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18);
-}
-
-@keyframes dot-pulse {
-  /* Preserve translateY(-50%) from the .agent-status anchor — animating
-   * transform here would otherwise clobber it and push the dot off-center. */
-  0%, 100% { opacity: 1;   transform: translateY(-50%) scale(1); }
-  50%      { opacity: 0.5; transform: translateY(-50%) scale(0.85); }
+@keyframes stripe-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
 }
 
 /* Title row */

@@ -37,37 +37,6 @@ function statusOf(agent: AgentSnapshot): StatusKind {
   return 'idle';
 }
 
-function StatusIcon({ status, title }: { status: StatusKind; title?: string }) {
-  // Idle = no icon at all. Earlier states used a dim grey dot which read as
-  // visual noise on cards that hadn't done anything yet.
-  if (status === 'idle') return null;
-  if (status === 'done') {
-    return (
-      <span className="agent-status done" title={title ?? 'Done'} aria-label="Done">
-        ✓
-      </span>
-    );
-  }
-  return (
-    <span
-      className={`agent-status dot ${status}`}
-      title={title ?? statusLabel(status)}
-      aria-label={statusLabel(status)}
-    />
-  );
-}
-
-function statusLabel(s: StatusKind): string {
-  switch (s) {
-    case 'starting': return 'Starting…';
-    case 'error': return 'Error';
-    case 'attention': return 'Needs input';
-    case 'streaming': return 'Working';
-    case 'done': return 'Done';
-    default: return '';
-  }
-}
-
 /**
  * Splits a progress label that starts with a step counter like "1/3 " into
  * a separate counter chip + activity word. Without this, multi-todo turns
@@ -182,11 +151,6 @@ export function AgentCard({
       onContextMenu={onContextMenu}
       onDoubleClick={(e) => { e.stopPropagation(); setEditing(true); }}
     >
-      <StatusIcon
-        status={status}
-        title={agent.errorReason ?? agent.attentionReason ?? undefined}
-      />
-
       <div className="agent-card-title">
         {editing ? (
           <input

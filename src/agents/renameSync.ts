@@ -3,9 +3,8 @@
  *
  * When Claude sets a new card title via `update_state`, Glance echoes
  * `/rename <title>` into the terminal — but only when the user has not typed
- * into the input box. These two pure
- * functions encode "is it safe?" so the stateful Agent stays thin and the
- * logic is unit-testable.
+ * into the input box. These two pure functions encode "is it safe?" so the
+ * stateful Agent stays thin and the logic is unit-testable.
  *
  * See docs/superpowers/specs/2026-05-21-terminal-rename-echo-design.md.
  */

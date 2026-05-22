@@ -511,10 +511,6 @@ export class Agent implements vscode.Disposable, ManagedAgent {
     }
     if (Object.keys(patch).length > 0) this.changeEmitter.fire(patch);
     this.turnCompleteEmitter.fire();
-    // Flush is tied to the real Stop hook only — the Notification-driven
-    // setNeedsAttention path deliberately does NOT flush, so a queued
-    // rename waits for a genuine turn-complete rather than an idle ping.
-    this.flushPendingRename();
   }
 
   /**
@@ -572,9 +568,11 @@ export class Agent implements vscode.Disposable, ManagedAgent {
     // there's no idle-timer fallback, so an agent that crashes mid-turn
     // would stay pulsing. That's an acceptable trade for not having the
     // bubble flicker every time the user types a character.
-    // A submitted prompt empties the input box — the /rename echo is safe
-    // to send again.
+    // A submitted prompt empties the input box — flush any /rename echo held
+    // back while the user was mid-message. The dirty→clean transition here is
+    // the watcher that releases a queued rename.
     this._inputDirty = false;
+    this.flushPendingRename();
     const patch: Partial<AgentSnapshot> = {};
     if (this._tldr !== null) {
       this._tldr = null;
@@ -679,18 +677,18 @@ export class Agent implements vscode.Disposable, ManagedAgent {
   }
 
   /**
-   * Echo `/rename <title>` into the terminal when Claude assigns a new AI
-   * title — but only when it is safe (Claude idle, input box clean). When
-   * unsafe, the title is queued and `flushPendingRename` retries on the next
-   * Stop. See docs/superpowers/specs/2026-05-21-terminal-rename-echo-design.md.
+   * Echo `/rename <title>` into the terminal when Claude assigns a new card
+   * title. Sent immediately when the input box is clean — mid-turn or not.
+   * If the user has typed into the box, the title is queued and
+   * `flushPendingRename` sends it when the user next submits.
+   * See docs/superpowers/specs/2026-05-21-instant-rename-echo-design.md.
    *
-   * `/rename` is not a Claude slash command — this is a deliberate, visible
-   * echo in the conversation, not a real session rename.
+   * `/rename` renames the session in place — it does not start a new Claude
+   * turn, so an instant mid-turn send cannot cascade.
    */
   private maybeSendRename(title: string): void {
     const decision = decideRename({
       title,
-      streaming: this._streaming,
       inputDirty: this._inputDirty,
       lastSent: this._lastSentRename,
     });
@@ -702,7 +700,7 @@ export class Agent implements vscode.Disposable, ManagedAgent {
     // 'skip' — already echoed this exact title; do nothing.
   }
 
-  /** Flush a queued `/rename` echo once a turn completes, if now safe. */
+  /** Flush a queued `/rename` echo when the input box goes clean (on submit). */
   private flushPendingRename(): void {
     const pending = this._pendingRename;
     const decision = decideFlush({

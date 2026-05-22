@@ -30,12 +30,8 @@ const webviewConfig = {
   jsx: 'automatic',
 };
 
-// Tests + transcript watcher: compiled per-file so node:test can load them as CJS.
+// Test sources + their non-test deps: compiled per-file so node:test loads them as CJS.
 const testEntries = [
-  'src/markers/extractMarkers.ts',
-  'src/markers/extractMarkers.test.ts',
-  'src/markers/transcriptWatcher.ts',
-  'src/markers/transcriptWatcher.test.ts',
   'src/server/mcpHandler.ts',
   'src/server/mcpHandler.test.ts',
   'src/server/GlanceServer.ts',
@@ -90,10 +86,6 @@ function copyStatic() {
   if (fs.existsSync('src/markers/hook.mjs')) {
     fs.copyFileSync('src/markers/hook.mjs', 'out/markers/hook.mjs');
     fs.chmodSync('out/markers/hook.mjs', 0o755);
-  }
-  if (fs.existsSync('src/markers/mcp-server.mjs')) {
-    fs.copyFileSync('src/markers/mcp-server.mjs', 'out/markers/mcp-server.mjs');
-    fs.chmodSync('out/markers/mcp-server.mjs', 0o755);
   }
 }
 

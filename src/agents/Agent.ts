@@ -549,8 +549,12 @@ export class Agent implements vscode.Disposable, ManagedAgent {
    */
   notifyInterrupted(): void {
     if (!this._streaming) return;
+    // An Esc interrupt terminates the turn and every subagent it dispatched —
+    // they stop with it — so clear the subagent rows along with `streaming`.
     this._streaming = false;
-    this.changeEmitter.fire({ streaming: false });
+    const patch: Partial<AgentSnapshot> = { streaming: false };
+    this.clearSubagents(patch);
+    this.changeEmitter.fire(patch);
   }
 
   /** A subagent (Agent tool call) started — add a running row. */

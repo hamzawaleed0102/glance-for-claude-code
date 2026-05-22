@@ -7,6 +7,7 @@
 
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 function log(line) {
   try {
@@ -19,53 +20,69 @@ function log(line) {
   }
 }
 
-async function postWithRetry(url, token, body) {
+/**
+ * POST `body` to `url` with bearer auth. Up to 3 attempts total with linear
+ * backoff; returns true on the first 2xx, false if every attempt fails.
+ * Each attempt has a 2s abort timeout, cleared in `finally` so no timer is
+ * left dangling. Exported for unit testing.
+ */
+export async function postWithRetry(url, token, body) {
   for (let attempt = 0; attempt < 3; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 2000);
       const res = await fetch(url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body,
         signal: controller.signal,
       });
-      clearTimeout(timer);
       if (res.ok) return true;
       log(`POST attempt ${attempt} got HTTP ${res.status}`);
     } catch (err) {
       log(`POST attempt ${attempt} failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      clearTimeout(timer);
     }
     await new Promise((r) => setTimeout(r, 100 * (attempt + 1)));
   }
   return false;
 }
 
-let raw = '';
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', (chunk) => { raw += chunk; });
-process.stdin.on('end', async () => {
-  try {
-    const payload = JSON.parse(raw);
-    log(`event ${payload?.hook_event_name ?? '?'} session=${payload?.session_id ?? '?'}`);
+/** Read the hook event from stdin and forward it to the HTTP server. */
+function runMain() {
+  let raw = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk) => { raw += chunk; });
+  process.stdin.on('end', async () => {
+    try {
+      const payload = JSON.parse(raw);
+      log(`event ${payload?.hook_event_name ?? '?'} session=${payload?.session_id ?? '?'}`);
 
-    // For UserPromptSubmit, stdout text is injected as additional context for
-    // the model (silent — not echoed in the terminal). Nudge the turn toward
-    // calling update_state. Emitted regardless of POST success.
-    if (payload?.hook_event_name === 'UserPromptSubmit') {
-      process.stdout.write('Glance: end this turn with mcp__glancer__update_state.');
-    }
+      // For UserPromptSubmit, stdout text is injected as additional context
+      // for the model (silent — not echoed in the terminal). Nudge the turn
+      // toward calling update_state. Emitted regardless of POST success.
+      if (payload?.hook_event_name === 'UserPromptSubmit') {
+        process.stdout.write('Glance: end this turn with mcp__glancer__update_state.');
+      }
 
-    const url = process.env.GLANCER_HOOK_URL;
-    const token = process.env.GLANCER_TOKEN;
-    if (!url || !token) {
-      log('skipping POST: GLANCER_HOOK_URL / GLANCER_TOKEN missing');
-      process.exit(0);
+      const url = process.env.GLANCER_HOOK_URL;
+      const token = process.env.GLANCER_TOKEN;
+      if (!url || !token) {
+        log('skipping POST: GLANCER_HOOK_URL / GLANCER_TOKEN missing');
+        process.exit(0);
+      }
+      const ok = await postWithRetry(url, token, JSON.stringify({ payload }));
+      log(ok ? 'POST ok' : 'POST failed after retries');
+    } catch (err) {
+      log(`error: ${err instanceof Error ? err.message : String(err)}`);
     }
-    const ok = await postWithRetry(url, token, JSON.stringify({ payload }));
-    log(ok ? 'POST ok' : 'POST failed after retries');
-  } catch (err) {
-    log(`error: ${err instanceof Error ? err.message : String(err)}`);
-  }
-  process.exit(0);
-});
+    process.exit(0);
+  });
+}
+
+// Run the stdin→POST flow only when executed as a script (Claude Code invokes
+// `node hook.mjs`). When imported by a test, only `postWithRetry` is used.
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  runMain();
+}

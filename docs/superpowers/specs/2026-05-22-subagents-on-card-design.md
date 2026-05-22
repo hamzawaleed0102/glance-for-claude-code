@@ -52,40 +52,43 @@ turn ends.
 
 - Subagents are dispatched via the **`Agent`** tool (`Task` is a deprecated
   alias). Hook matchers must target `"Agent"`.
-- **`tool_use_id`** is a stable per-tool-call identifier, documented as
-  consistent across `PreToolUse`, `PostToolUse`, and `SubagentStop` — the
-  official correlation key.
+- **`tool_use_id`** is a stable per-tool-call identifier, consistent across
+  `PreToolUse` and `PostToolUse` — the correlation key. A verification spike
+  (§12) found `SubagentStop` does **not** carry it.
 - **`PreToolUse`** fires before a tool runs; with `matcher: "Agent"` it fires
   per subagent dispatch. Payload includes `hook_event_name`, `tool_name`,
   `tool_input`, `tool_use_id`, `session_id`, `cwd`.
-- **`SubagentStop`** fires when a subagent finishes — **foreground or
-  background**. Payload includes `hook_event_name`, `agent_id`, `agent_type`,
-  `tool_use_id`.
-- **Documented gap:** the exact `tool_input` schema of the `Agent` tool is not
-  published. The label a row can show therefore needs confirming by a spike
-  (see §12); `agent_type` is guaranteed, a richer description is not.
+- **`PostToolUse`** fires after a tool returns; with `matcher: "Agent"` it
+  fires per subagent completion, carrying the **same `tool_use_id`** as that
+  subagent's `PreToolUse`.
+- **`SubagentStop`** fires when a subagent finishes, but its payload
+  (`agent_id`, `agent_type`, `last_assistant_message`, …) carries **no
+  `tool_use_id`** — it can't be tied back to a specific `PreToolUse`, so it is
+  not used.
+- The spike confirmed the `Agent` `tool_input` carries a short `description`
+  and a `subagent_type` — both usable as a row label.
 
 ## 5. Detection design
 
 - **Start signal:** `PreToolUse` with `matcher: "Agent"`. Gives `tool_use_id`
-  and `tool_input` (label source).
-- **Done signal:** `SubagentStop`. Gives the matching `tool_use_id` and
-  `agent_type`. Chosen over `PostToolUse{Agent}` because `SubagentStop` fires
-  for **background** subagents at their true completion, whereas `PostToolUse`
-  fires when the `Agent` *tool call* returns — which can be early for a
-  backgrounded subagent.
-- **Correlation:** `tool_use_id` — the `PreToolUse` that started a subagent and
-  the `SubagentStop` that ended it carry the same `tool_use_id`.
+  and `tool_input` (`description` → the row label).
+- **Done signal:** `PostToolUse` with `matcher: "Agent"`. Carries the **same
+  `tool_use_id`** as the subagent's `PreToolUse`. `SubagentStop` was the
+  original choice but was rejected — the §12 spike found its payload has no
+  `tool_use_id`, so it can't be correlated to a specific subagent.
+- **Correlation:** `tool_use_id` — the `PreToolUse` and `PostToolUse` of the
+  same `Agent` call carry the same id (spike-confirmed).
 - `hook.mjs` needs **no change** — it already forwards any event payload
   verbatim.
 
 ## 6. Components
 
 ### `hook-settings.json` (`AgentManager` constructor)
-Add two event registrations alongside the existing four:
-- `PreToolUse` — a matcher group with `matcher: "Agent"` (scopes the hook to
-  the `Agent` tool; without it the hook fires on every tool call).
-- `SubagentStop` — the existing empty-`matcher` group shape.
+Add two event registrations alongside the existing four — both with
+`matcher: "Agent"` (scopes them to the `Agent` tool; without the matcher they
+would fire on every Read/Edit/Bash):
+- `PreToolUse` — a subagent was dispatched.
+- `PostToolUse` — a subagent finished.
 Both invoke the same `hook.mjs`.
 
 ### `Agent` — turn-scoped subagent state
@@ -117,10 +120,10 @@ unit-tested under `node --test`. The exact `tool_input` field names are
 confirmed by the §12 spike.
 
 ### `handleHookEvent` (`AgentManager`)
-Two new branches:
-- `PreToolUse` — if `tool_name === 'Agent'`, read `tool_use_id` and
-  `subagentLabel(tool_input)`, call `agent.subagentStarted(id, label)`.
-- `SubagentStop` — read `tool_use_id`, call `agent.subagentFinished(id)`.
+Two new branches, both gated on `tool_name === 'Agent'`:
+- `PreToolUse` — read `tool_use_id` + `subagentLabel(tool_input)`, call
+  `agent.subagentStarted(id, label)`.
+- `PostToolUse` — read `tool_use_id`, call `agent.subagentFinished(id)`.
 
 ### `AgentSnapshot` (`src/shared/messages.ts`)
 Add `subagents: { id: string; label: string; done: boolean }[]`. It travels in

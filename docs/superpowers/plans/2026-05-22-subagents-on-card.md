@@ -4,7 +4,7 @@
 
 **Goal:** Show a row per subagent on a Glance card while the session has subagents running — label + running/done — cleared when the parent turn ends.
 
-**Architecture:** Two new Claude Code hooks (`PreToolUse` scoped to the `Agent` tool, and `SubagentStop`) POST into the existing in-process HTTP server. `AgentManager.handleHookEvent` routes them to the `Agent`, which keeps a turn-scoped `_subagents` list exposed on the snapshot and rendered by `AgentCard`. Correlation is by the documented `tool_use_id`.
+**Architecture:** Two new Claude Code hooks — `PreToolUse` and `PostToolUse`, both scoped to the `Agent` tool via `matcher: "Agent"` — POST into the existing in-process HTTP server. `AgentManager.handleHookEvent` routes them to the `Agent`, which keeps a turn-scoped `_subagents` list exposed on the snapshot and rendered by `AgentCard`. Correlation is by `tool_use_id` (spike-confirmed; `SubagentStop` was rejected because its payload lacks one).
 
 **Tech Stack:** TypeScript, esbuild, `node:test`, VS Code extension API, React webview.
 
@@ -386,8 +386,8 @@ Replace it with:
         hooks: [{ type: 'command', command: shellQuoted }],
       },
     ];
-    // PreToolUse fires before every tool call; scope it to the `Agent` tool
-    // (subagent dispatch) so the hook does not run on every Read/Edit/Bash.
+    // PreToolUse / PostToolUse fire for every tool call; scope them to the
+    // `Agent` tool so the hooks don't run on every Read/Edit/Bash.
     const agentMatcherGroup = [
       {
         matcher: 'Agent',
@@ -404,7 +404,7 @@ Replace it with:
             Notification: matcherGroup,
             SessionStart: matcherGroup,
             PreToolUse: agentMatcherGroup,
-            SubagentStop: matcherGroup,
+            PostToolUse: agentMatcherGroup,
           },
         },
         null,
@@ -473,10 +473,10 @@ Insert two `else if` branches between the end of the `Notification` branch body 
       if (evt.tool_name === 'Agent' && typeof evt.tool_use_id === 'string') {
         agent.subagentStarted(evt.tool_use_id, subagentLabel(evt.tool_input));
       }
-    } else if (hookEvent === 'SubagentStop') {
-      // A subagent finished — the tool_use_id matches its dispatching
-      // PreToolUse{Agent} event.
-      if (typeof evt.tool_use_id === 'string') {
+    } else if (hookEvent === 'PostToolUse') {
+      // PostToolUse{Agent} = a subagent finished — its tool_use_id matches
+      // the dispatching PreToolUse{Agent}.
+      if (evt.tool_name === 'Agent' && typeof evt.tool_use_id === 'string') {
         agent.subagentFinished(evt.tool_use_id);
       }
     }

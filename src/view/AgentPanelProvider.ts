@@ -304,12 +304,21 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
     const stylesUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'styles.css'),
     );
+    const audioUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(
+        this.context.extensionUri,
+        'out',
+        'webview',
+        'mixkit-correct-answer-tone-2870.wav',
+      ),
+    );
     const csp = [
       `default-src 'none'`,
       `style-src ${webview.cspSource} 'unsafe-inline'`,
       `script-src ${webview.cspSource}`,
       `font-src ${webview.cspSource}`,
       `img-src ${webview.cspSource} data:`,
+      `media-src ${webview.cspSource}`,
     ].join('; ');
     const indexHtmlPath = path.join(
       this.context.extensionPath,
@@ -323,11 +332,12 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
     } catch {
       template = `<!DOCTYPE html>
 <html><head><meta http-equiv="Content-Security-Policy" content="__CSP__"><link rel="stylesheet" href="__STYLES__"></head>
-<body><div id="root"></div><script src="__SCRIPT__"></script></body></html>`;
+<body><div id="root"></div><audio id="completion-sound" src="__AUDIO__" preload="auto"></audio><script src="__SCRIPT__"></script></body></html>`;
     }
     return template
       .replace(/__CSP__/g, csp)
       .replace(/__SCRIPT__/g, scriptUri.toString())
-      .replace(/__STYLES__/g, stylesUri.toString());
+      .replace(/__STYLES__/g, stylesUri.toString())
+      .replace(/__AUDIO__/g, audioUri.toString());
   }
 }

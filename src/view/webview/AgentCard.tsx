@@ -5,6 +5,13 @@ import { postToHost } from './api';
 interface Props {
   agent: AgentSnapshot;
   active: boolean;
+  /**
+   * True when this card is active AND keyboard focus has left the panel
+   * — i.e. the user pressed Enter and is now inside the session's
+   * terminal. Switches the card from its "selected" look to the louder
+   * "terminal-focused" look so the two states are unmistakable.
+   */
+  terminalFocused?: boolean;
   onSelect: () => void;
   onKill: () => void;
   /** True when this card is the one currently being dragged. */
@@ -62,6 +69,7 @@ function ProgressLabel({ label }: { label: string }) {
 export function AgentCard({
   agent,
   active,
+  terminalFocused,
   onSelect,
   onKill,
   dragging,
@@ -133,6 +141,7 @@ export function AgentCard({
         'agent-card' +
         (agent.kind === 'shell' ? ' kind-shell' : '') +
         (active ? ' active' : '') +
+        (terminalFocused ? ' terminal-focused' : '') +
         (agent.starting ? ' starting' : '') +
         (dragging ? ' dragging' : '') +
         (dragOver ? ' drag-over' : '') +

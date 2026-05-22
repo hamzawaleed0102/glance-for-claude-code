@@ -3,7 +3,7 @@ import type { AgentSnapshot, ClaudeModel } from '../../shared/messages';
 import { postToHost } from './api';
 import { AgentCard } from './AgentCard';
 import { reconcileOrder } from './reconcileOrder';
-import { contentRelativeTop } from './flipGeometry';
+import { contentRelativeTop, parseTranslateY } from './flipGeometry';
 import { resolveAgentListKey } from './agentListKeymap';
 
 // Reorder animation duration. FLIP technique: cards already moved to
@@ -15,6 +15,12 @@ const REORDER_ANIM_MS = 220;
 interface Props {
   agents: AgentSnapshot[];
   activeId: string | null;
+  /**
+   * Whether keyboard focus is inside the panel. When false the active
+   * card renders its "terminal-focused" look — the user pressed Enter
+   * and is now typing in that session's terminal.
+   */
+  panelFocused: boolean;
   onSelect: (id: string) => void;
   onKill: (id: string) => void;
 }
@@ -26,7 +32,7 @@ const MODELS: { id: ClaudeModel; label: string; detail: string }[] = [
   { id: 'haiku', label: 'Haiku', detail: 'fastest' },
 ];
 
-export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
+export function AgentList({ agents, activeId, panelFocused, onSelect, onKill }: Props) {
   const [filter, setFilter] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -130,10 +136,21 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
     for (const el of Array.from(cards)) {
       const id = el.dataset.agentId;
       if (id) {
+        // Subtract any FLIP transform still mid-transition from a prior
+        // reorder. getBoundingClientRect() reports the *rendered* top
+        // (layout + transform); if a commit lands inside this card's
+        // 220ms animation window (delete → active-id change one frame
+        // later, or a streaming update_state), the raw rect would read
+        // the transient animated offset as a real move — jerking the
+        // animation and poisoning prevTopsRef. parseTranslateY backs it
+        // out so the stored position is always the settled layout slot.
+        const liveTranslateY = parseTranslateY(
+          getComputedStyle(el).transform,
+        );
         newTops.set(
           id,
           contentRelativeTop(
-            el.getBoundingClientRect().top,
+            el.getBoundingClientRect().top - liveTranslateY,
             listTop,
             scrollTop,
           ),
@@ -331,6 +348,43 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
         <div className="panel-actions">
           <button className="icon-btn" title="Filter" onClick={() => setFilterOpen((p) => !p)}>⌕</button>
           <button className="icon-btn" title="New session" onClick={() => postToHost({ type: 'newAgent' })}>+</button>
+          <div className="model-picker-wrap">
+            <button
+              className={`icon-btn model-picker-btn${pickerOpen ? ' open' : ''}`}
+              onClick={() => setPickerOpen((p) => !p)}
+              title="New session with model…"
+              aria-label="New session with a specific model"
+              aria-expanded={pickerOpen}
+            >
+              <svg
+                className="chev"
+                viewBox="0 0 12 12"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="3 4.5 6 7.5 9 4.5" />
+              </svg>
+            </button>
+            {pickerOpen && (
+              <div className="model-picker">
+                {MODELS.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      setPickerOpen(false);
+                      postToHost({ type: 'newAgent', model: m.id });
+                    }}
+                  >
+                    {m.label} · {m.detail}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
       {filterOpen && (
@@ -355,6 +409,7 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
             key={a.id}
             agent={a}
             active={a.id === activeId}
+            terminalFocused={a.id === activeId && !panelFocused}
             onSelect={() => onSelect(a.id)}
             onKill={() => onKill(a.id)}
             dragging={draggingId === a.id}
@@ -366,49 +421,6 @@ export function AgentList({ agents, activeId, onSelect, onKill }: Props) {
             onDragEnd={onCardDragEnd}
           />
         ))}
-      </div>
-      <div className="new-agent-btn">
-        <button
-          className="new-agent-btn-main"
-          onClick={() => postToHost({ type: 'newAgent' })}
-        >
-          + New Session
-        </button>
-        <button
-          className={`new-agent-btn-chevron${pickerOpen ? ' open' : ''}`}
-          onClick={() => setPickerOpen((p) => !p)}
-          title="Pick model"
-          aria-label="Pick model"
-          aria-expanded={pickerOpen}
-        >
-          <svg
-            className="chev"
-            viewBox="0 0 12 12"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="3 7.5 6 4.5 9 7.5" />
-          </svg>
-        </button>
-        {pickerOpen && (
-          <div className="model-picker">
-            {MODELS.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => {
-                  setPickerOpen(false);
-                  postToHost({ type: 'newAgent', model: m.id });
-                }}
-              >
-                {m.label} · {m.detail}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );

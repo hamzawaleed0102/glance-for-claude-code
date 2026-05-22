@@ -2,38 +2,31 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { decideRename, decideFlush } from './renameSync';
 
-test('decideRename sends when the input box is clean', () => {
+test('decideRename sends the first rename when the input box is clean', () => {
   assert.equal(
-    decideRename({ title: 'Auth bug', inputDirty: false, lastSent: null }),
+    decideRename({ inputDirty: false, lastSent: null }),
     'send',
   );
 });
 
-test('decideRename queues when the user has typed into the box', () => {
+test('decideRename queues the first rename when the user has typed into the box', () => {
   assert.equal(
-    decideRename({ title: 'Auth bug', inputDirty: true, lastSent: null }),
+    decideRename({ inputDirty: true, lastSent: null }),
     'queue',
   );
 });
 
-test('decideRename skips a title already echoed', () => {
+test('decideRename skips once a rename was already echoed this session', () => {
   assert.equal(
-    decideRename({ title: 'Auth bug', inputDirty: false, lastSent: 'Auth bug' }),
+    decideRename({ inputDirty: false, lastSent: 'Auth bug' }),
     'skip',
   );
 });
 
-test('decideRename skips an already-echoed title even when the box is dirty', () => {
+test('decideRename skips a later rename even when the input box is dirty', () => {
   assert.equal(
-    decideRename({ title: 'Auth bug', inputDirty: true, lastSent: 'Auth bug' }),
+    decideRename({ inputDirty: true, lastSent: 'Auth bug' }),
     'skip',
-  );
-});
-
-test('decideRename re-sends a title that differs from the last echoed', () => {
-  assert.equal(
-    decideRename({ title: 'Auth bug fix', inputDirty: false, lastSent: 'Auth bug' }),
-    'send',
   );
 });
 
@@ -44,10 +37,10 @@ test('decideFlush skips when nothing is queued', () => {
   );
 });
 
-test('decideFlush skips when the queued title was already echoed', () => {
+test('decideFlush sends a fresh queued title when the box is clean', () => {
   assert.equal(
-    decideFlush({ pending: 'Auth bug', inputDirty: false, lastSent: 'Auth bug' }),
-    'skip',
+    decideFlush({ pending: 'Auth bug', inputDirty: false, lastSent: null }),
+    'send',
   );
 });
 
@@ -58,9 +51,9 @@ test('decideFlush keeps queuing while the user has typed into the box', () => {
   );
 });
 
-test('decideFlush sends a fresh queued title when the box is clean', () => {
+test('decideFlush skips a queued title once a rename was already echoed this session', () => {
   assert.equal(
-    decideFlush({ pending: 'Auth bug', inputDirty: false, lastSent: null }),
-    'send',
+    decideFlush({ pending: 'New title', inputDirty: false, lastSent: 'Auth bug' }),
+    'skip',
   );
 });

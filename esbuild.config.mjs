@@ -38,6 +38,8 @@ const testEntries = [
   'src/markers/transcriptWatcher.test.ts',
   'src/server/mcpHandler.ts',
   'src/server/mcpHandler.test.ts',
+  'src/server/GlanceServer.ts',
+  'src/server/GlanceServer.test.ts',
   'src/agents/sessionScanner.ts',
   'src/agents/sessionScanner.test.ts',
   'src/agents/ids.ts',

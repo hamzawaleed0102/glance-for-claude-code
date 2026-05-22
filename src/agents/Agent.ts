@@ -568,6 +568,7 @@ export class Agent implements vscode.Disposable, ManagedAgent {
     // there's no idle-timer fallback, so an agent that crashes mid-turn
     // would stay pulsing. That's an acceptable trade for not having the
     // bubble flicker every time the user types a character.
+    //
     // A submitted prompt empties the input box — flush any /rename echo held
     // back while the user was mid-message. The dirty→clean transition here is
     // the watcher that releases a queued rename.

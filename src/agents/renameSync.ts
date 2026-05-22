@@ -32,7 +32,7 @@ export function decideRename(opts: {
 }
 
 /**
- * Decide what to do with a queued rename when a turn completes (Stop).
+ * Decide what to do with a queued rename when the input box goes clean (on submit).
  *  - nothing queued                  -> 'skip'
  *  - queued title already echoed      -> 'skip'  (caller clears the queue)
  *  - user has typed into the box      -> 'queue' (keep waiting)

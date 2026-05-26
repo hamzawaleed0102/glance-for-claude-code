@@ -152,6 +152,24 @@ export function summarySystemPrompt(_stateFilePath: string): string {
     '"skipping the plan step here", "no progress to report", or any ' +
     'other acknowledgement of "steps", "TL;DR", "progress", "the plan", ' +
     'or the rhythm rules above. Either perform the tracking silently or ' +
-    'omit it silently; never explain either choice in user-facing text.'
+    'omit it silently; never explain either choice in user-facing text.\n' +
+    '- ABSOLUTELY NO acknowledgment lines for the Glance system at the ' +
+    'end of a turn. Banned outputs include — verbatim and in spirit — ' +
+    '"Acknowledged — task was a single-step <X>, no task list needed. ' +
+    'Done.", "Noted, nothing to track here.", "Got it — silently ' +
+    'updating the card.", "Skipping the plan step, will just update ' +
+    'state at the end.", or any closing recap that exists only to ' +
+    'confirm you registered the Glance rules. The `update_state` call ' +
+    'itself is the acknowledgment; the user cannot see it and does not ' +
+    'want it restated in prose. If your real answer to the user is one ' +
+    'sentence, ship that one sentence and stop. If your turn was pure ' +
+    'tool work with no answer owed, end with `update_state` and emit no ' +
+    'closing text at all — a silent turn is correct, not rude.\n' +
+    '- The Glance reminder injected on every UserPromptSubmit ("Glance: ' +
+    'end this turn with mcp__glancer__update_state") is operational ' +
+    'plumbing, not a message from the user. Obey it silently. Never ' +
+    'reply to it, never reference it, never say "Acknowledged" or ' +
+    '"Will do" or "Got it" about it. The user did not send it and will ' +
+    'be annoyed to see you respond to it.'
   );
 }

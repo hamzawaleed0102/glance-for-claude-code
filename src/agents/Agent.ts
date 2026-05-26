@@ -22,6 +22,15 @@ function defaultShell(): string {
  * meaningful card content — they always come from a schema
  * misinterpretation. Compared case-insensitively after trim.
  */
+/**
+ * Delay between the ESC keystroke and the rest of the `c c` chord
+ * (Ctrl+U + /clear<Enter>). The TUI's input parser reads `\x1b<byte>`
+ * in a single chunk as Alt+<byte>, so ESC needs a beat on its own
+ * before more bytes arrive. ~50ms matches typical xterm ESC timeouts
+ * and is well below human-perceptible.
+ */
+const CLEAR_CHORD_ESC_GAP_MS = 60;
+
 const MARKER_STRING_BAD_VALUES: ReadonlySet<string> = new Set([
   'null',
   'undefined',
@@ -729,10 +738,23 @@ export class Agent implements vscode.Disposable, ManagedAgent {
    * keyboard focus into it so the user lands ready to type. Wired to
    * the `c c` chord on the focused agent panel.
    *
+   * The chord must land immediately even when the input box is dirty
+   * (the user typed something they never submitted) or a turn is
+   * mid-flight. We ship three keystrokes:
+   *   1. ESC      — interrupts any in-flight turn so /clear isn't
+   *                 queued behind it. No-op when idle.
+   *   2. Ctrl+U   — kills the current input line. No-op when empty.
+   *   3. /clear\r — the actual command.
+   *
+   * ESC ships on its own and the rest ships after a short delay because
+   * the TUI's input parser reads `\x1b<byte>` in a single chunk as
+   * Alt+<byte>, not a bare Escape followed by a separate keypress. The
+   * gap lets the parser flush ESC before the next byte arrives.
+   *
    * Uses `claude.sendInput` (a direct PTY write) rather than
    * `terminal.sendText` — `sendText` routes through `handleInput`, which
    * would falsely mark the input box dirty for the /rename echo. The PTY
-   * still sees `/clear<Enter>` exactly as if the user typed it.
+   * still sees the keystrokes exactly as if the user had typed them.
    *
    * We also call `resetCardState` directly here instead of waiting for
    * Claude's `SessionStart` hook to round-trip — we know /clear is
@@ -744,7 +766,14 @@ export class Agent implements vscode.Disposable, ManagedAgent {
    */
   clearActive(): void {
     this.focusTerminal();
-    this.claude?.sendInput('/clear\r');
+    const claude = this.claude;
+    if (claude !== null) {
+      claude.sendInput('\x1b');
+      setTimeout(() => {
+        // Re-check in case the PTY exited during the gap.
+        this.claude?.sendInput('\x15/clear\r');
+      }, CLEAR_CHORD_ESC_GAP_MS);
+    }
     this.resetCardState();
   }
 

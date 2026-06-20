@@ -899,11 +899,12 @@ export class Agent implements vscode.Disposable, ManagedAgent {
         patch.tldr = next;
       }
     }
-    if (
-      'title' in s &&
-      this._titleSource !== 'manual' &&
-      this._titleSource !== 'rename'
-    ) {
+    // Claim the title exactly once per conversation — at the start, while the
+    // source is still 'default'. Once an AI/manual/rename title is set it is
+    // locked so the card/terminal tab never renames mid-conversation. /clear
+    // and /compact reset the source to 'default' (resetCardState), which
+    // re-arms this for the next conversation.
+    if ('title' in s && this._titleSource === 'default') {
       const sanitized = sanitizeMarkerString(s.title);
       const next = sanitized !== null ? capitalizeFirstLetter(sanitized) : null;
       if (next !== null && next !== this._name) {
